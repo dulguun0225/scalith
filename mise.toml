@@ -1,0 +1,4 @@
+[tools]
+# Exact, same pin as dulguun0225/skills: two machines resolving a major
+# differently shows up as a behaviour change in the toolchain.
+node = "26.5.1"

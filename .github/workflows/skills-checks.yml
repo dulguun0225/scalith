@@ -1,0 +1,57 @@
+# CI for the skills/ tree and the scripts that check it.
+#
+# Runs the discovery check and the wired gates, copied with the skills from
+# dulguun0225/skills on 2026-09-27.
+#
+# The discovery check is a gate here on purpose: a skill whose frontmatter
+# fails to parse is not a skill at all to every consumer, and that defect was
+# real here — `llm-default-traps` shipped with an unquoted `: ` in its
+# description on 2026-07-30 and was invisible until `npm run check` ran.
+
+name: skills-checks
+
+on:
+  push:
+    paths:
+      - 'skills/**'
+      - 'scripts/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/skills-checks.yml'
+  pull_request:
+    paths:
+      - 'skills/**'
+      - 'scripts/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/skills-checks.yml'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # The exact pin from mise.toml, for the reason recorded there: two
+          # machines resolving a major differently shows up as a toolchain
+          # behaviour change.
+          node-version: '26.5.1'
+
+      - name: Exact tool versions from the lockfile
+        run: npm ci
+
+      - name: Discovery — every skill parses and is visible to a consumer
+        # `skills add . --list` walks the repository the way a consumer's
+        # `skills add <owner>/<repo>` does. It exits zero even when it skips a
+        # file it cannot parse, so the gate is the skip line: any
+        # "Skipped ... SKILL.md" in the output is a skill no consumer gets.
+        run: |
+          npm run check 2>&1 | tee /tmp/discovery.txt
+          if grep -q "Skipped" /tmp/discovery.txt; then
+            echo "a SKILL.md was skipped by discovery - it is invisible to every consumer"; exit 1
+          fi
+
+      - name: Gates — evidence order, dangling pointers and description budget
+        run: npm run gates

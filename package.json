@@ -1,0 +1,20 @@
+{
+  "name": "scalith",
+  "private": true,
+  "description": "AI software factory; today, spec-kit workflows packaged as Agent Skills.",
+  "engines": {
+    "node": ">=26.5.1 <27"
+  },
+  "scripts": {
+    "check": "skills add . --list",
+    "check:evidence-order": "node scripts/evidence-order.mjs",
+    "check:pointers": "node scripts/dangling-pointer.mjs",
+    "check:descriptions": "node scripts/description-budget.mjs",
+    "gates": "npm run check:evidence-order && npm run check:pointers && npm run check:descriptions",
+    "runs": "node scripts/runs.mjs",
+    "try": "skills use ./ --agent claude-code --skill"
+  },
+  "devDependencies": {
+    "skills": "1.5.21"
+  }
+}
