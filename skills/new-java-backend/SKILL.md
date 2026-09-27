@@ -19,7 +19,7 @@ The default is vendored: the directory is the project root, the template lands i
 
 Do not write a `pom.xml`, an ArchUnit ban list, a CI file or an error-response skeleton from the directives in `java-backend-rules`: it costs the first session, produces a different result each time, and pins versions from memory. The template is one tree, byte-identical for a given commit, package and name.
 
-The project `CLAUDE.md` it lifts states the trunk in one line, `` Base branch: `main` ``, beside the definition-of-done command; `main` is the branch the script's `git init -b main` makes, and `build-feature` reads that line to find the base branch. A project whose trunk is named otherwise changes the name between the backticks in the same commit as the rename, together with the trunk named in the root CI trigger and the branch ruleset; the service's own `backend/CLAUDE.md` is not read.
+**A service works on `dev`, never on `main`.** The project `CLAUDE.md` it lifts states the base branch in one line, `` Base branch: `dev` ``, beside the definition-of-done command; `dev` is the branch the script's `git init -b dev` makes, and `build-feature` reads that line to find the base branch. The script also makes `main` at the same commit, and the printed steps push both and make `dev` the forge's default branch. `main` takes pull requests from `dev` only, by merge commit: the lifted `.github/rulesets/main.json` forbids a push to it, and the `backend` CI job fails a pull request into it from any other branch. The service's own `backend/CLAUDE.md` is not read.
 
 The pinned commit is `DEFAULT_REF` inside the script. Move it in a commit that says which gate change it brings in; `--ref` overrides it for one run.
 

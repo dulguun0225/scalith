@@ -141,6 +141,10 @@ for (const key of ['from', 'until']) {
   if (!STAGES.includes(cfg[key])) throw new Error(`args.${key} must be one of ${STAGES.join(', ')}`)
 }
 if (STAGES.indexOf(cfg.from) > STAGES.indexOf(cfg.until)) throw new Error('args.from is after args.until')
+// A service works on dev, and its main takes pull requests from dev only: no run plans
+// or builds against main or master, or merges into either.
+const RELEASE_BRANCHES = ['main', 'master']
+if (RELEASE_BRANCHES.includes(cfg.mergeInto)) throw new Error(`args.mergeInto cannot be ${cfg.mergeInto}: a service works on dev, and ${cfg.mergeInto} takes pull requests from dev only`)
 if (!SEVERITY_FLOORS.includes(cfg.severityFloor)) {
   throw new Error(cfg.severityFloor === 'CRITICAL'
     ? 'args.severityFloor cannot be CRITICAL: a floor there tolerates every finding the scale grades, including a constitution MUST violation, and ends the loop after one round. The floor must be one of ' + SEVERITY_FLOORS.join(', ')
@@ -1365,6 +1369,13 @@ const codeList = names => names.map(n => `\`${n}\``).join(' and ')
     state.baseBranch = b.branch
     state.baseBranchSource = b.source
     log(`base branch: ${b.branch} (${baseSourceText(b.source)})`)
+  }
+  if (RELEASE_BRANCHES.includes(state.baseBranch)) {
+    // Nothing has placed the run on a feature branch yet, so the checkout may be main itself.
+    state.handoffRefused = 'the run stopped before preflight, on whatever branch it started on, which may be the one it refuses.'
+    return await needsHuman('preflight',
+      `the base branch is \`${state.baseBranch}\` (${baseSourceText(state.baseBranchSource)}), and a service works on \`dev\`: \`${state.baseBranch}\` takes pull requests from \`dev\` only, so no feature is planned or built against it. Nothing was checked out, merged or written. Make \`dev\` the base: create it from \`${state.baseBranch}\` where it does not exist and push it, commit the line \`\` Base branch: \`dev\` \`\` in the repository root's \`CLAUDE.md\` on \`dev\`, make \`dev\` the default branch on the forge, and start the run from \`dev\` or the feature branch`,
+      { baseBranch: state.baseBranch, source: state.baseBranchSource, refused: RELEASE_BRANCHES })
   }
   const dirName = '<the last path segment of the feature directory, e.g. 004-product-gl-config>'
   const p = await run('preflight', full ? 'preflight' : 'preflight (discovery and sync)', [

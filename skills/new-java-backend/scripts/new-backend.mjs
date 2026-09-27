@@ -30,7 +30,7 @@ import { parseArgs } from 'node:util';
 
 const TEMPLATE_URL = process.env.TEMPLATE_URL || 'https://github.com/dulguun0225/java-backend-template.git';
 // The pinned template commit. Move it deliberately, in a commit that says which gate change it brings in.
-const DEFAULT_REF = '9fff054b07f1000725f99b485233b0a1e03466f2';
+const DEFAULT_REF = '0c0960c904ea05a3465968442752423eccd2ae68';
 
 const [major] = process.versions.node.split('.').map(Number);
 if (major < 22) die(`node ${process.versions.node} is too old; this script needs 22 or newer`);
@@ -89,7 +89,8 @@ const dir = opts.dir || `./${name}`;
 for (const tool of ['git', 'mvn']) if (!ok(tool, ['--version'])) die(`${tool} not on PATH`);
 if (fs.existsSync(dir) && fs.readdirSync(dir).length > 0) die(`${dir} exists and is not empty`);
 
-// 1. project root with one empty commit: `git subtree add` refuses a repository that has no HEAD.
+// 1. project root with one empty commit: `git subtree add` refuses a repository that has no HEAD. The branch is
+// dev, where a service works; main is made at the end, at the same commit, and takes pull requests from dev only.
 // Until the template is in place there is nothing worth keeping, so a failure before then removes the
 // directory this run created; after it, the tree is left for inspection and said so.
 const madeDir = !fs.existsSync(dir);
@@ -98,7 +99,7 @@ process.chdir(dir);
 const absDir = fs.realpathSync(process.cwd());
 let keep = false;
 try {
-  run('git', ['init', '-q', '-b', 'main']);
+  run('git', ['init', '-q', '-b', 'dev']);
   run('git', ['commit', '-q', '--allow-empty', '-m', 'init: empty root']);
 
   // 2. fetch the template and resolve the ref to a commit, so the record says exactly what was instantiated.
@@ -143,9 +144,11 @@ try {
 
   run('git', ['add', '-A']);
   run('git', ['commit', '-q', '-m', `init: ${name} from java-backend-template ${short} (${verified})`]);
+  run('git', ['branch', 'main']);
 
-  const next = [`gh repo create <org>/${name} --private --source=. --push`];
-  if (mode === 'vendored') next.push('node scripts/apply-ruleset.mjs     # PR + backend + frontend checks required on main');
+  const next = [`gh repo create <org>/${name} --private --source=. --push && git push -u origin main`];
+  next.push(`gh repo edit <org>/${name} --default-branch dev     # work happens on dev; main takes pull requests from dev only`);
+  if (mode === 'vendored') next.push('node scripts/apply-ruleset.mjs     # PR + backend + frontend checks required on dev and main');
   next.push('npx skills add dulguun0225/skills -a claude-code -y     # the engineering-decision skills');
   next.push('npx skills add dulguun0225/scalith -a claude-code -y    # plan-feature, build-feature');
   // No /speckit.* line here: a printed step is read as owed, and at scaffold time Article VII has nothing to hold.

@@ -57,12 +57,12 @@ Three loops over stock spec-kit commands:
 - Loop exits: review and analyze stop when a finding repeats from an earlier round; converge stops at `args.severityFloor` (default `NONE`) or `maxConvergeRounds` (6). At `NONE` a run normally ends at the round cap.
 - Restart with `args.from: "<stage>"` (`args.wall` required); after the domain expert answers, `plan-feature` restarts `from: "review-plan"`. `resumeFromRunId` replays an interrupted run.
 - Returns `status: "done" | "needs-human"`. On `needs-human` an agent commits `HANDOFF.md` on the feature branch, and `QUESTIONS.md` beside it when the run holds questions for the domain expert. Review-plan, tasks and analyze collect those questions, each graded by what a different answer would undo, and the run stops after analyze while one is open. Only a person leaves a `MEDIUM` or `LOW` question open, recorded as `yes — <who>` in the table in `QUESTIONS.md`; later planning runs carry it. The build stages ask nothing. A start after analyze refuses while `QUESTIONS.md` holds an open question. The invoking session resolves what it can with high confidence, never by editing `spec.md`, records it in `RESOLUTIONS.md` and restarts; only the rest goes to a person.
-- Never writes `spec.md`, never commits on the base branch, never rebases or force-pushes, opens no PR. Base branch comes from `args.baseBranch`, else a root `CLAUDE.md` line of exactly `` Base branch: `dev` ``, else `origin/HEAD`, else the single local `main`/`master`/`develop`/`dev`.
+- Never writes `spec.md`, never commits on the base branch, never rebases or force-pushes, opens no PR. Base branch comes from `args.baseBranch`, else a root `CLAUDE.md` line of exactly `` Base branch: `dev` ``, else `origin/HEAD`, else the single local `main`/`master`/`develop`/`dev`. A base of `main` or `master` stops the run, and `mergeInto` may not name either: service projects work on `dev`, and their `main` takes pull requests from `dev` only. This repo itself works on `main`.
 - Run journals are machine-local: `~/.claude/projects/<project path, / replaced by ->/<session id>/workflows/wf_*.json`.
 
 ### What a target repo must have
 
-`.specify/` with `.specify/memory/constitution.md`; `.claude/skills/speckit-*/`; a root `CLAUDE.md` naming the definition-of-done command and the `Base branch:` line; a clean tree and an `origin` remote. Prompts assume `java-backend-template` vendored into `backend/`.
+`.specify/` with `.specify/memory/constitution.md`; `.claude/skills/speckit-*/`; a root `CLAUDE.md` naming the definition-of-done command and `` Base branch: `dev` ``; a clean tree and an `origin` remote. Prompts assume `java-backend-template` vendored into `backend/`.
 
 ### Limits
 
