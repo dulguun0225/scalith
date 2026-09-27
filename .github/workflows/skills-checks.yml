@@ -1,12 +1,9 @@
 # CI for the skills/ tree and the scripts that check it.
 #
-# Runs the discovery check and the wired gates, copied with the skills from
-# dulguun0225/skills on 2026-09-27.
+# Runs the discovery check and the wired gates.
 #
-# The discovery check is a gate here on purpose: a skill whose frontmatter
-# fails to parse is not a skill at all to every consumer, and that defect was
-# real here — `llm-default-traps` shipped with an unquoted `: ` in its
-# description on 2026-07-30 and was invisible until `npm run check` ran.
+# The discovery check is a gate on purpose: a skill whose frontmatter fails to
+# parse is not a skill at all to every consumer, and nothing else reports it.
 
 name: skills-checks
 
@@ -53,5 +50,5 @@ jobs:
             echo "a SKILL.md was skipped by discovery - it is invisible to every consumer"; exit 1
           fi
 
-      - name: Gates — evidence order, dangling pointers and description budget
+      - name: Gates — dangling pointers and description budget
         run: npm run gates
