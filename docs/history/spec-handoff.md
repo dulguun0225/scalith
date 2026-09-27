@@ -2,6 +2,36 @@
 
 `spec-handoff-questions`, `spec-handoff-domain`, `spec-handoff-joint`, `build-feature-prepare`. They replace `spec-readiness` (2026-09-24), whose record is the third section of this file.
 
+## 2026-09-27 — third report: entries the spec answers still reach people
+
+**What happened.** The owner reported that the handoff skills still produce question-like entries that the specs already answer, and restated the aim: `/build-feature` asks nothing. The run's `HANDOFF-QUESTIONS.md` is on another machine and was not read here; the causes below are read from the skill text.
+
+**Causes in the text:**
+
+- Stage 1 allowed a decision whose source is *the quoted spec text it follows from*, and stage 2 showed every decision to the domain expert as a row to dispute. A decision citing the spec restates the spec, and a row shown for dispute is a question to its reader: the owner's *question-like*.
+- Every check for *the spec already answers this* ran in the context that raised the entry. The three revisions of 2026-09-26 each added an instruction to that same reader.
+- Entries graded *no stop predicted* were kept and shown, though they remove no stop.
+- The refutation stance, carried from the removed review-spec stage, asks for every weakness.
+- The sibling rule of 2026-09-26 (silence where a sibling decides is no entry) rested on *no stop caused by silence against a sibling is on record*; `wf_6e72f3dd-930` A2 was such a stop.
+
+**Changes** (this pass's, on the owner's report, 2026-09-27; not reviewed by the owner):
+
+- **Stage 1.** An answer in `spec.md` or the constitution, any section, any wording, means no entry, neither question nor decision. A decision may cite the spec's own text only where the spec contradicts itself or keeps a replaced reading. Sibling-decided silence is a decision citing the sibling. Every entry names the stage and the finding it would raise; a gap no stage would stop on is not written (replaces *keep every gap whatever its stage*; the severity floor stays rejected). Stance: predict what plan, tasks or analyze would stop on.
+- **Stage 1, new check.** A second subagent or session, not the reader, searches spec, constitution and siblings for each entry's answer and closes each one the spec or constitution answers with `Answer: stated in spec: "<quote>"`; the quote alone must give the answer. It runs again on a rerun, over the new entries only.
+- **Stage 2.** The decision table became a list: every proposed decision in one plain sentence with its source in a few words, no reply needed where the expert agrees; he disputes by exception, as before. Stage 1 no longer writes decisions the spec answers, so the list holds only the agent's choices.
+- **Stage 4** unchanged: it already listed applied decisions one sentence each.
+- Stage 3 unchanged: it shows only questions.
+
+**Reversed the same day (owner).** A first form of this revision listed decisions with a source by id only. The owner rejected it: the domain expert would not see decisions the agent wrote into his spec and would have no say on them.
+
+**Rejected defaults**: the reader's own re-read as the only closing check (three revisions failed); keeping *no stop predicted* entries (reach a person, remove no stop).
+
+**Sweep.** `README.md` rows for stages 1 and 2; description of stage 2; stage 1 evidence: intro, provenance, stance, sibling narrowing corrected, the stop rule and the second context grounded, three reopen conditions, one *uncertain* claim. Grep for `no stop predicted`, `two tables`, `sibling's answer stands`: only this file's older records and the evidence's dated narrowing keep them.
+
+**Checked.** `npm run check` lists all seven skills; `npm run gates` passes. Cost not measured: this repo has no token script.
+
+**Not reviewed.** No adversarial review; no run of this form.
+
 ## 2026-09-26 — a recommendation on every question, made explicit
 
 **Why.** The owner reported a run in which the agent would not give recommendations. The first version (`6e20d93`) said *Recommend nothing* in stage 2; `a614159` reversed it, but stages 2 to 4 still quoted the old rule as *one question at a time, with no recommendation* in their reversal notes, and stage 2 kept *the default is the agent supplying the fact. It lost*, which reads as a ban on the agent answering. Which version the reported run used is not known here; that machine's install was not read.

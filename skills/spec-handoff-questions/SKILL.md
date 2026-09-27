@@ -9,11 +9,11 @@ disable-model-invocation: true
 
 Sequence (owner, 2026-09-26): this → `spec-handoff-domain`, domain expert alone → `spec-handoff-joint`, both, only if a Domain+Technical question is open → this again → `build-feature-prepare`, technical expert alone → `build-feature`.
 
-Ground: eight `build-feature` stops caused by clarified specs ([evidence.md](evidence.md)). Each check is the written file, *convention*, contrary to this set's rule that a check fails the build. **Status: *decided, not yet validated*, 2026-09-26**; run once that day under the earlier ask-every-gap rule; this decide-first form has not run; no build has followed; no `review-by`, as nothing is *confirmed*.
+Ground: eight `build-feature` stops caused by clarified specs ([evidence.md](evidence.md)). Each check is the written file, *convention*, contrary to this set's rule that a check fails the build. **Status: *decided, not yet validated*, 2026-09-26, revised 2026-09-27**; run once on 2026-09-26 under the earlier ask-every-gap rule; the decide-first form and the 2026-09-27 revision have not run; no build has followed; no `review-by`, as nothing is *confirmed*.
 
 ## Run it in a fresh context
 
-**Run after the last `/speckit-clarify` and after stages 2 and 3, in a context that did not write, clarify or answer the spec: a subagent given the feature directory and this file's path, or a new session. The invoker reads no spec; the reader skips this section.** Effort: `build-feature`'s review-plan row (Opus, high, 2026-09-24).
+**Run after the last `/speckit-clarify` and after stages 2 and 3, in a context that did not write, clarify or answer the spec: a subagent given the feature directory and this file's path, or a new session. Then run the check in *A second context closes what the spec answers* in another such context. The invoker reads no spec; the reader and the checker skip this section.** Effort: `build-feature`'s review-plan row (Opus, high, 2026-09-24).
 
 The default is clarify, or its session, as the check. It lost: all eight specs were clarified; clarify asks at most five questions, skips sibling specs, and reads what the author meant.
 
@@ -23,13 +23,13 @@ The default is clarify, or its session, as the check. It lost: all eight specs w
 
 **Read in full `spec.md`, `checklists/requirements.md` if present, `.specify/memory/constitution.md` and every other `specs/*/spec.md`; no plan or code. Write only `HANDOFF-QUESTIONS.md`: no spec edit, `/speckit-*` or commit; later stages apply its decisions.** Feature directory: the user's, else `.specify/feature.json`'s; if neither has a `spec.md`, ask.
 
-Stance: refute that a plan can be written without deciding what the authors have not; it is `build-feature`'s removed review-spec reading, minus its writes and its fix loop, which had no fixed point.
+Stance: find what plan, tasks or analyze would stop on, not what could be worded better. It is `build-feature`'s removed review-spec reading, minus its writes, its fix loop, which had no fixed point, and its refutation stance. That stance lost (2026-09-27, owner's report that the handoff still raises what the spec answers): it asks for every weakness, and the handoff is judged by the questions it removes.
 
 (Check: `git status --porcelain` lists only `HANDOFF-QUESTIONS.md`; `git diff -- <featureDir>/spec.md` is empty — *convention*.)
 
 ## What the reader looks for
 
-**Find every gap: no answer in the spec, statements that contradict, or a case with no outcome. Before recording one, search all of `spec.md` for its answer — every requirement, scenario, edge case, entity, success criterion, assumption and `## Clarifications` entry, not only the section quoted — then the constitution and the sibling specs. An answer found anywhere, which no other text contradicts, means no entry. A "needs confirmation" or "assumed" note beside a stated value is no gap in that value.** Brackets: default section, overridden by the section rule; stopping stage.
+**Find every gap a build stage would stop on: no answer in the spec, statements that contradict, or a case with no outcome. Before recording one, search all of `spec.md` for its answer — every requirement, scenario, edge case, entity, success criterion, assumption and `## Clarifications` entry, not only the section quoted — then the constitution and the sibling specs. An answer in `spec.md` or the constitution, in any section and any wording, which no other text contradicts, means no entry: not a question, and not a decision quoting it. An answer only in a sibling spec is a decision citing it. A "needs confirmation" or "assumed" note beside a stated value is no gap in that value.** Brackets: default section, overridden by the section rule; stopping stage.
 
 - **Markers** [D; preflight, *bespoke*]: every `[NEEDS CLARIFICATION]` and unfilled placeholder, listed first.
 - **Deferred or assumed fact** [D; review-plan to converge]: a value the spec leaves open, calls undecided, or defers ("at plan stage") with no value stated; an algorithm or standard named without a source. Cite only a real, named source; never invent one. With none, it is an external-fact question, still with a recommended answer. `wf_e68e4e48-4ed`.
@@ -39,7 +39,7 @@ Stance: refute that a plan can be written without deciding what the authors have
 - **Unconditioned guarantee, edge case without outcome** [D+T; analyze]: "exactly once", "never", "always", "0 missing"; an edge case with no outcome. `wf_e4e27b83-bc3`.
 - **Requirements that disagree, repeat or mis-cite** [split; analyze, or review-plan if no plan realises both]: both sides (D); a repeated rule, a wrong cited id, where the intended text is plain (T). `wf_6e72f3dd-930`.
 - **Clarify residue** [D; review-plan or analyze]: text keeping a replaced reading; a decision credited to a missing clarification. `wf_115f053c-900`.
-- **Sibling-spec conflict** [D; analyze]: a contradiction, both quoted with feature prefix. Where this spec is silent and a sibling decides, the sibling's answer stands; no entry. `wf_a6f3b709-43a`.
+- **Sibling-spec conflict** [D; analyze]: a contradiction, both quoted with feature prefix. Where this spec is silent and a sibling decides, a decision carrying the sibling's answer, never a question. `wf_a6f3b709-43a`; silence: `wf_6e72f3dd-930`.
 - **Constitution conflict** [T if an amendment resolves it, else D+T; review-plan]: a violated article, named; a requirement needing an amendment. `wf_cc1aa65d-148`.
 - **Contradicted header** [T; analyze]: a Branch line other than `feature/<feature directory name>`. `wf_de4bfd27-d8a`.
 
@@ -51,7 +51,7 @@ The default is to leave these to the plan. It lost: a value the run picks lives 
 
 ## Decide what the agent can; ask only what a person alone knows
 
-**Record each gap as a decision unless it meets a ground below. A decision is the sentence `spec.md` gains, with its source: the quoted spec, sibling or constitution text it follows from, or a named established practice (a standard, a regulation's text, a platform default). Where no source decides, pick the reading that loses no data, money or legal standing and is cheapest to reverse, and say that no source decides.**
+**Record each gap as a decision unless it meets a ground below. A decision is the sentence `spec.md` gains, with its source: the quoted spec text it follows from where the spec contradicts itself or keeps a replaced reading, sibling text, or a named established practice (a standard, a regulation's text, a platform default). Where no source decides, pick the reading that loses no data, money or legal standing and is cheapest to reverse, and say that no source decides.**
 
 Ask a person only for:
 
@@ -88,15 +88,25 @@ The default was a question with no replacement sentence, so the author never sig
 
 ## Grade by what a run would do, and drop nothing
 
-**Give each entry the stage that would stop without it, or *no stop predicted* with reason, and order each list by it; never by severity. Keep every gap whatever its stage.**
+**Give each entry the stage that would stop without it and the finding that stage would raise, and order each list by stage; never by severity. A gap no stage would stop on is not written.**
 
 The default is a severity floor. It lost: `build-feature` stops on a spec finding of any severity (`specChangesOf` filters nothing), and LOW items were in four of the eight stops.
 
-(Check: each list runs preflight, review-plan, tasks, analyze, converge, no stop predicted — *convention*.)
+The 2026-09-24 rule kept every gap, *no stop predicted* included. It lost (2026-09-27, owner's report): those entries reach a person and prevent no stop.
+
+(Check: each list runs preflight, review-plan, tasks, analyze, converge; every `Stops at:` names a finding — *convention*.)
+
+## A second context closes what the spec answers
+
+**After the reader writes the file, a second subagent or session that did not write it is given the feature directory, this file's path and the file. For each `open` or `proposed` entry it searches `spec.md`, the constitution and the sibling specs for text that answers it. Where `spec.md` or the constitution answers it, it sets `Answer: stated in spec: "<quote>" (<location>)` or `Answer: stated in constitution: "<quote>" (<article>)`. Where only a sibling answers a question, it turns the question into a decision citing the sibling. A quote must pass `grep -F` and, read alone, give the answer the entry lacks; a sentence on the same subject that leaves the entry's point open is no answer. It writes nothing else. On a rerun it checks the new entries only.**
+
+The default was the reader re-reading its own entries before writing. It lost (owner's report, 2026-09-27): the context that judged a point a gap re-reads it with the same judgement, and three revisions of that reader's instructions on 2026-09-26 left the handoff still raising what the spec answers.
+
+(Check: every `stated in` quote passes `grep -F` against the file it names — *convention*.)
 
 ## The file, and the rerun
 
-**A rerun keeps every entry and `Answer:` unchanged and never reopens a subject an earlier entry closed; a new entry is only a gap the spec's changed text created, through the same search and grounds. It appends new entries at their list's end as `(added <date>)` after the highest id, appends a `Run` line, and reports *handoff complete* or the open D and D+T ids with their next stage. It runs after stage 3 (2 if 3 is skipped), again only if a later stage reopens the handoff; never a loop.**
+**A rerun keeps every entry and `Answer:` unchanged and never reopens a subject an earlier entry closed; a new entry is only a gap the spec's changed text created, through the same search and grounds. It appends new entries at their list's end as `(added <date>)` after the highest id, appends a `Run` line, has the second context check the new entries, and reports *handoff complete* or the open D and D+T ids with their next stage. It runs after stage 3 (2 if 3 is skipped), again only if a later stage reopens the handoff; never a loop.**
 
 - **Spec hash:** `grep -v '^\*\*Status\*\*:' spec.md | git hash-object --stdin`; Status excluded so sign-off keeps it valid.
 - **Complete:** no `Answer: open` or `Answer: proposed` under D or D+T, and the last `Run` hash equals the spec hash.
@@ -122,7 +132,7 @@ Ground: <external fact | owners' conflict | irreversible choice | constitution a
 Readings: <each; under Domain+Technical, with technical consequence>
 Recommended: <answer> — <reason | guess>
 Depends on: <id>        (split Technical half only)
-Stops at: <stage> if unanswered
+Stops at: <stage> — <the finding it would raise> if unanswered
 Answer: open
 
 #### A<n> — <class>[ (added <date>)]
@@ -131,11 +141,11 @@ Gap: <one sentence>
 Decision: <the sentence the spec gains>
 Source: <quoted text | named practice | none decides: <why this reading>>
 Depends on: <id>        (split Technical half only)
-Stops at: <stage> without it
+Stops at: <stage> — <the finding it would raise> without it
 Answer: proposed
 ```
 
-Later stages set `Answer: answered in spec, Session <date> (handoff: domain|joint|technical)` on a question, `Answer: applied, Session <date> (handoff: …)` on a decision, `Answer: replaced by the expert, Session <date> (handoff: …)` on a disputed one, `Answer: stated in spec: "<quote>" (<location>)` on an entry this stage should not have raised, or `Answer: left as written: <reason>`; a moved entry gains `Moved from <section> <date>: <reason>`.
+Later stages set `Answer: answered in spec, Session <date> (handoff: domain|joint|technical)` on a question, `Answer: applied, Session <date> (handoff: …)` on a decision, `Answer: replaced by the expert, Session <date> (handoff: …)` on a disputed one, `Answer: stated in spec: "<quote>" (<location>)` on an entry the reader should not have raised (the second context sets it too), or `Answer: left as written: <reason>`; a moved entry gains `Moved from <section> <date>: <reason>`.
 
 (Check: at stage 4's start the hashes match and every entry has `Answer:` — *convention*; `build-feature-prepare` checks.)
 

@@ -1,6 +1,6 @@
 # Spec handoff questions — evidence
 
-For a person deciding whether to trust the directive text. The reading rules and the question classes were written 2026-09-24, the date of the owner's decision and of the first read of the eight handoffs, for the single-reader skill `spec-readiness`. The split into three sections and the rerun were decided by the owner on 2026-09-26, when that skill was replaced by this one and the three stages after it. The caveat rule, and the reversal of the later stages' one-at-a-time rule, were decided by the owner the same day, after the first run; then, on the owner's second report that day, the decide-first rule: the agent decides every gap it can and asks a person only on four grounds. No research pass and no refutation panel stands behind any of it.
+For a person deciding whether to trust the directive text. The reading rules and the question classes were written 2026-09-24, the date of the owner's decision and of the first read of the eight handoffs, for the single-reader skill `spec-readiness`. The split into three sections and the rerun were decided by the owner on 2026-09-26, when that skill was replaced by this one and the three stages after it. The caveat rule, and the reversal of the later stages' one-at-a-time rule, were decided by the owner the same day, after the first run; then, on the owner's second report that day, the decide-first rule: the agent decides every gap it can and asks a person only on four grounds. On 2026-09-27, on the owner's third report that the handoff raises what the spec answers, this pass added the second checking context, required a predicted stop for every entry, and turned sibling-decided silence into a decision. No research pass and no refutation panel stands behind any of it.
 
 ## Provenance
 
@@ -17,6 +17,7 @@ For a person deciding whether to trust the directive text. The reading rules and
 | `account-metadata` `specs/002-account-attributes/HANDOFF-QUESTIONS.md`, the first run's output | questions per section (29 Domain, 7 Domain+Technical, 10 Technical); Q1 and the spec text it quotes | read in that repository's working tree, 2026-09-26 |
 | The owner, after that run, 2026-09-26 | most Domain questions only re-confirmed the spec; the caveat rule; one table with recommendations in stages 2 to 4 | the owner's decision, *convention* |
 | The owner, second report, 2026-09-26 | the handoff still asked what the spec stated; its purpose is fewer questions to people; the agent decides what it can | the owner's decision, *convention* |
+| The owner, third report, 2026-09-27 | the handoff skills still produce question-like entries that the specs already answer | the owner's report; that run's `HANDOFF-QUESTIONS.md` is on another machine and was not read, *convention* |
 
 The eight stops, with the handoff commit each was read from:
 
@@ -47,7 +48,7 @@ The subagent reads this skill by its path because of the frontmatter. The Claude
 
 ## Read the spec, the constitution and the sibling specs, and write only the file
 
-The review-spec reviewer prompt, recovered from `9e91cdf^`, opened: "You are a fresh-context reviewer with no memory of how spec.md was written. Your job is to REFUTE the claim that it is a complete, faithful and testable specification of its source. Read-only: change nothing." It read the spec, `checklists/requirements.md` and the constitution in full, and required each finding to name "the exact location and the concrete edit that resolves it". **Kept:** the stance, the full reading, the exact location. **Dropped:** the source-faithfulness items (the upstream-provenance layer they checked was removed from the service repositories on 2026-09-21), the concrete edit, the fix prompt that applied findings to `spec.md` and committed `spec: review round N`, and the round loop.
+The review-spec reviewer prompt, recovered from `9e91cdf^`, opened: "You are a fresh-context reviewer with no memory of how spec.md was written. Your job is to REFUTE the claim that it is a complete, faithful and testable specification of its source. Read-only: change nothing." It read the spec, `checklists/requirements.md` and the constitution in full, and required each finding to name "the exact location and the concrete edit that resolves it". **Kept:** the full reading, the exact location; the refutation stance until 2026-09-27, when it was replaced by the stop prediction. **Dropped:** the source-faithfulness items (the upstream-provenance layer they checked was removed from the service repositories on 2026-09-21), the concrete edit, the fix prompt that applied findings to `spec.md` and committed `spec: review round N`, and the round loop.
 
 Why the stage was removed, from `build-feature`'s evidence, 2026-09-21: the spec became an input the run may not write, "the one thing in the feature directory no agent of the run wrote, and therefore the only oracle the run's own gates can be refuted against". The loop record, from the same file: run `wf_cc1aa65d-148`, three spec-review rounds (6 → 3 → 1 blocking), 1.19M subagent tokens; and, over the seven launches of 2026-09-17, most findings at a cap were "holes opened by the previous round's fix".
 
@@ -106,7 +107,7 @@ Narrowed 2026-09-26 by the owner, after the first run: a value the spec states i
 
 - `wf_a6f3b709-43a` C1 [HIGH]: "003 spec.md SC-009 vs specs/005-address-registry/spec.md FR-006: the owners of the two specs must decide which one yields." Taken to the owner, who narrowed 003/SC-009 on 2026-09-23.
 
-Narrowed 2026-09-26 by the owner's second report that the handoff re-asks what the spec states: silence where a sibling decides is no longer a question, and the sibling's answer stands. The one instance above is a contradiction and still falls in the class. No stop caused by silence against a sibling is on record.
+Narrowed 2026-09-26 by the owner's second report that the handoff re-asks what the spec states: silence where a sibling decides is no longer a question, and the sibling's answer stands. The one instance above is a contradiction and still falls in the class. That record said no stop caused by silence against a sibling is on record; it is wrong: `wf_6e72f3dd-930` A2 stopped on FR-014's silence about a blank query, which 001 and 002 decided (read again 2026-09-27 from the search class above). So since 2026-09-27 such silence is a decision citing the sibling: no person is asked, and the spec gains the sentence the build would otherwise stop for.
 
 ### A conflict with the constitution
 
@@ -139,6 +140,14 @@ The fact that shows what a proposed answer can cost is `wf_e68e4e48-4ed`. The sp
 
 `workflow.mjs` at 2026-09-24: `const specChangesOf = r => (r && Array.isArray(r.specChanges) ? r.specChanges.filter(Boolean) : [])`, and every stage that returns it stops on a non-empty result. No severity is read. *Primary-source verified*, one reader. LOW items were among the spec changes of `wf_de4bfd27-d8a` (I2), `wf_bc7b0f7c-ce6` (A2), `wf_e4e27b83-bc3` (F4) and `wf_6e72f3dd-930` (A3). Whether any of those would have stopped a run on its own was not tested.
 
+The rule that an entry needs a predicted stop, and that *no stop predicted* is not written, is this pass's, 2026-09-27, on the owner's third report, *convention*. The ground is the handoff's purpose as the owner stated it on 2026-09-26: the entries exist to remove build stops and questions to people, and an entry the reader itself predicts no stage will stop on removes neither. The cost: a reader that predicts no stop where a stage would stop drops a real gap. No stop on record tests it.
+
+## A second context closes what the spec answers
+
+This pass's, 2026-09-27, *convention*. The three revisions of 2026-09-26 each added an instruction to the reader: search every section, re-read each entry, close what the spec answers. The owner's third report says entries the spec answers still reach people. A check in the same context repeats the judgement that raised the entry; the fresh-context premise in *Run it in a fresh context* is the ground for moving the check to another context, and it rests on one observation on plans. The cost is one more subagent per run and per rerun, unmeasured.
+
+The quote rule (the quote alone gives the answer) is the guard against the reopen condition below, a closing search too loose.
+
 ## The file, and the rerun
 
 `build-feature` preflight, `workflow.mjs` at 2026-09-24: "`git status --porcelain` must be empty (untracked files under .specify/workflows/runs/ and .claude/worktrees/ do not count). A dirty tree is a problem and you stop there". So an untracked `HANDOFF-QUESTIONS.md` in the feature directory is a preflight refusal. *Primary-source verified* for that date. The author works on the base branch while the build runs (owner's decision, 2026-09-21, recorded in `build-feature`).
@@ -161,6 +170,8 @@ What would reopen a decision here:
 - Questions reaching a person that meet none of the four grounds: the reading ignored them.
 - A build stop on a subject where this spec was silent and a sibling decided: the 2026-09-26 narrowing of the sibling class is wrong.
 - A question closed as `stated in spec` whose quoted text did not in fact answer it: the closing search is too loose.
+- A build stop on an entry the second context closed as stated: the quote rule is too loose.
+- A build stop on a gap the reader judged no stage would stop on: the stop requirement drops real gaps.
 - A recommended answer an expert passed over and later found wrong: the finding is about the 2026-09-26 reversal in stages 2 to 4.
 
 **Not to be cited as evidence that this skill works**: the eight stops. They are the ground it was written from. One spec has been through it (`account-metadata` 002, 2026-09-26), before the caveat rule, and no build has followed.
@@ -178,4 +189,5 @@ What would reopen a decision here:
 | An agent's decision, disputed only by exception, is right often enough to replace a question | *uncertain* — eight recommendations on record, one wrong, and that one an external fact |
 | The class list covers what a spec lacks | *uncertain* — eight stops, one team |
 | Running this check prevents a stop | *uncertain* — run once, no build since |
+| A second context closes entries the reader's own re-read kept | *uncertain* — this pass's inference, 2026-09-27; no run of it |
 | Every directive | *convention* — decided 2026-09-24 and 2026-09-26, check is the written artifact |
