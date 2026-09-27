@@ -14,3 +14,4 @@ Thumbs.db
 
 # per-agent memory the subagents keep for themselves; machine-local
 .claude/agent-memory/
+temp.md
