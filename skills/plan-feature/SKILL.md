@@ -1,10 +1,11 @@
 ---
 name: plan-feature
-description: Plan one spec-kit feature from a clarified spec with no human gate, and hand every question the spec leaves to its domain expert in one file. ALWAYS load when asked to plan a feature, to run plan, tasks and analyze on a written spec, or to plan again after the domain expert answered; invoke it by name (/plan-feature).
+description: Plan one spec-kit feature from a clarified spec with no human gate — plan, plan review, tasks, analyze — and hand every question only the spec can answer to its domain expert in QUESTIONS.md, to be answered with /speckit-clarify. Invoke by name (/plan-feature).
+disable-model-invocation: true
 ---
 # Plan a feature — plan, tasks and analyze, and the questions for the domain expert
 
-**The process is three loops over stock spec-kit commands (owner's decision, 2026-09-28).** This skill is step 2.1.
+**The process is three loops over stock spec-kit commands.** This skill is step 2.1.
 
 | Step | Who | What | Repeat until |
 |---|---|---|---|
@@ -13,7 +14,7 @@ description: Plan one spec-kit feature from a clarified spec with no human gate,
 | 2.2 | domain expert, on the base branch | `/speckit-clarify` over `QUESTIONS.md` | clarify finds nothing left to ask |
 | 3 | technical expert | `/build-feature`: implement, converge | done |
 
-2.1 and 2.2 alternate until 2.1 ends with no question. Rejected the same day: the four spec handoff skills that stood between steps 1 and 2 (`spec-handoff-questions`, `-domain`, `-joint`, `build-feature-prepare`) — invented stages that predicted what the build would stop on, where the build's own stages now raise the questions (`build-feature` evidence, 2026-09-28).
+2.1 and 2.2 alternate until 2.1 ends with no question.
 
 ## Call build-feature's script; write no loop
 
@@ -47,14 +48,10 @@ That start merges the base branch, answers included, into the feature branch, re
 1. Send the domain expert the line in `clarifyCommand`, with one sentence saying it is for this feature and runs on the base branch in Claude Code. `QUESTIONS.md` holds the same line and the steps. The domain expert runs it until clarify says nothing is left to ask — five questions per run, each with the recommended answer, every answer written into `spec.md` — commits `spec.md` on the base branch, pushes and replies.
 2. When they reply, run this skill again with `from: "review-plan"`.
 
-Rejected the same day by the owner: stopping at the first question, one round trip per stage that finds one; a draft pull request as the channel, a GitHub dependency where the build opens no pull request; the file on the base branch, the technical side's commits on the trunk.
-
 ## Every other stop is yours to resolve
 
-**On any other `needs-human` return — a review finding that survived its fix round, a merge conflict, a missing input — apply `build-feature`'s resolution rule: act on every item you hold a high-confidence recommendation for, record it in `<featureDir>/RESOLUTIONS.md`, restart with the arguments the handoff names, and take an item to a person only as that rule says.** The one thing the rule never allows is an edit to `spec.md`: a spec change is a question for the domain expert, sent as above. The rule, its ground and its limits are in `build-feature`; this paragraph is the index, because a session that invokes `/plan-feature` never loads that skill's body, and a rule for what the session does when its own call returns has to be in the text the call was made from.
+**On any other `needs-human` return — a review finding that survived its fix round, a merge conflict, a missing input — apply `build-feature`'s resolution rule: act on every item you hold a high-confidence recommendation for, record it in `<featureDir>/RESOLUTIONS.md`, restart with the arguments the handoff names, and take an item to a person only as that rule says.** The one thing the rule never allows is an edit to `spec.md`: a spec change is a question for the domain expert, sent as above. The rule and its limits are in `build-feature`; this paragraph repeats it because a session that invokes `/plan-feature` never loads that skill's body.
 
 ## What this skill does not do
 
 It does not implement: on `status: "done"` no question is open, a stale `QUESTIONS.md` has been removed, and the next step is `/build-feature`, which refuses while that file is on the branch. A `done` return pushes nothing; `build-feature`'s finish pushes the branch. It does not write the spec, and it does not message anybody: the technical expert sends the line, on whatever channel the team uses.
-
-**Status: *decided, not yet validated*** — written 2026-09-28. The question collection and `QUESTIONS.md` were exercised against a stub of the Workflow sandbox that day and by no run; whether `/speckit-clarify` asks the file's questions before its own is untested. Grounds in [evidence.md](evidence.md).

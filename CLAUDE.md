@@ -14,42 +14,36 @@ scalith is an AI software factory, planned in three stages:
 
 ## Layout and commands
 
-Agent Skills distributed with Vercel's `skills` CLI: `skills/<name>/SKILL.md` (loaded when the skill runs) plus `evidence.md` (grounds, for a person; no agent loads it). Moved here 2026-09-27 from the sibling repo `../skills` (`dulguun0225/skills`) at `2ab5dc4`; history before that date is there, and so are the engineering-decision skills these load alongside (`java-backend-rules`, `money`, …).
+Agent Skills distributed with Vercel's `skills` CLI, one `skills/<name>/SKILL.md` each, all manual-only (`disable-model-invocation: true`). The engineering-decision skills these load alongside (`java-backend-rules`, `money`, …) are in the sibling repo `../skills` (`dulguun0225/skills`).
 
 | Path | What it is |
 | --- | --- |
 | `skills/build-feature/SKILL.md`, `workflow.mjs` | The unattended feature build: one Claude Code Workflow script, run `from: "implement"` by this skill. Both files are large; read by section |
 | `skills/plan-feature/` | Runs the same script `until: "analyze"` and hands the spec's open questions to the domain expert; no script of its own |
 | `skills/new-java-backend/` | Project creation: lands `dulguun0225/java-backend-template` at a pinned commit, then `specify init --here` |
-| `docs/history/runs.md` | Ledger of real runs, and the harvest procedure that turns a sweep into skill edits |
-| `docs/history/` (other files) | Decision records per skill family |
-| `BACKLOG.md` | Owed work; a closed row leaves it and its record goes to `docs/history/` |
+| `BACKLOG.md` | Owed work |
 
 ```bash
 mise trust && mise install && npm ci   # once per machine; npm ci before any script
 npm run check          # skills the CLI discovers; run after any frontmatter edit
-npm run gates          # evidence order, dangling pointers, description budget; CI runs check + gates
+npm run gates          # dangling pointers, description budget; CI runs check + gates
 npm run runs -- --repo <abs path> --since <date>   # report from Workflow run journals in service repos
 npm run try -- <name>  # run one skill from the working tree
 ```
 
 Flags go after `--`; without it npm swallows them. A skill missing from `npm run check` usually means a frontmatter YAML error (an unquoted `: ` in `description`).
 
-## Conventions carried from `dulguun0225/skills`
+## Conventions
 
-Its `CLAUDE.md` holds the full authoring rules; these apply to every skill here:
-
-- Directive text in `SKILL.md`, grounds in `evidence.md`. A fix to one must be checked against the other; a stale sentence left in `SKILL.md` is the failure that recurs.
-- Each decision carries its date and who made it, and names the rejected default and why it lost.
-- Status lines (*decided, not yet validated*, "no run has taken it") are claims too: after a `npm run runs` sweep, re-read every *unrun* / *unmeasured* sentence against what the journals show.
+- `SKILL.md` holds rules, not history: no dates, decision records, rejected alternatives, run ids or status lines.
 - No relative link leaves its own skill directory; `check:pointers` fails the build on one.
 - Never state a skill count in prose; run `npm run check`.
 
 ## How the skills work
 
-### Pipeline today
+### Pipeline
 
-Three loops over stock spec-kit commands (owner, 2026-09-28; the four spec handoff skills were removed that day):
+Three loops over stock spec-kit commands:
 
 1. Domain expert, on the base branch: `/speckit-specify`, `/speckit-clarify` until nothing is left to ask.
 2. Technical expert: `/plan-feature` (plan, review-plan, tasks, analyze). Questions that would change the spec go to `QUESTIONS.md` on the feature branch, with a recommended answer each; the technical expert sends the domain expert the one `/speckit-clarify` line the file holds, the domain expert answers on the base branch and pushes, and `/plan-feature` reruns `from: "review-plan"`. Repeat until a run ends with no question.
@@ -70,8 +64,8 @@ Three loops over stock spec-kit commands (owner, 2026-09-28; the four spec hando
 
 `.specify/` with `.specify/memory/constitution.md`; `.claude/skills/speckit-*/`; a root `CLAUDE.md` naming the definition-of-done command and the `Base branch:` line; a clean tree and an `origin` remote. Prompts assume `java-backend-template` vendored into `backend/`.
 
-### Stated limits
+### Limits
 
 - Implement is the most expensive stage, converge second; cost is recorded in tokens only.
-- A feature can use many runs without reaching implement when its spec is not ready (`docs/history/runs.md`, F3).
-- Several mechanisms have only been tested against a stub of the Workflow sandbox, never in a real run; each skill's status line says which. Both workflow skills are marked *decided, not yet validated*.
+- A feature whose spec is not ready can use many runs without reaching implement.
+- Several mechanisms have been tested only against a stub of the Workflow sandbox, never in a real run.

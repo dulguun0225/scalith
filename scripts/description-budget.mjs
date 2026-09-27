@@ -2,31 +2,20 @@
 // The description-budget check.
 //
 // Claude Code keeps every installed skill's `name` + `description` resident in
-// every session, in a listing budgeted at roughly 1% of the context window.
-// Measured 2026-09-21 with this set installed at user scope: the descriptions
-// totalled 24.7k chars, six skills (`money`, `money-api`, `money-java`,
-// `money-storage`, `tech-decision-research`, plus one from another repo) were
-// listed with NO description so their triggers could never fire, and two
-// entries (1,601 and 1,758 chars) were cut mid-word — i.e. a per-entry cap
-// near 1.5k chars. The caps below are the owner's choice, not a product
-// constant: 400 per description, 8,000 for the set, leaving room for
-// built-in and project skills sharing the same budget.
+// every session, in a listing budgeted at roughly 1% of the context window;
+// descriptions past the budget are dropped or cut. Caps: 400 per description,
+// 8,000 for the set, leaving room for built-in and project skills.
 //
-// No YAML library. A silently mis-parsed description is worse than a failure
-// — that is the exact shape of the 2026-07-30 defect this repo already
-// shipped: `llm-default-traps` had an unquoted `: ` inside its `description`,
-// YAML read it as a nested mapping, and the file was not a skill at all.
-// This script implements a strict subset of frontmatter scalars and refuses
-// anything outside it as a parse error, naming the line.
+// No YAML library: a silently mis-parsed description is worse than a failure
+// (an unquoted `: ` makes YAML read a nested mapping, and the file is then not
+// a skill at all). This script implements a strict subset of frontmatter
+// scalars and refuses anything outside it as a parse error, naming the line.
 //
-// Skills with `disable-model-invocation: true` are left out of the set total,
-// added 2026-09-26. The Claude Code skills docs, read that day, give that key as
-// "Description not in context, full skill loads when you invoke", so such a
-// description does not take listing budget. It is still parsed and still held
-// to the per-description cap. The key must be the plain scalar `true` or
-// `false`: `yes`, `on` or a quoted "true" is a boolean in one YAML version and
-// a string in another, and a key the harness might read either way cannot
-// decide whether a description is counted.
+// Skills with `disable-model-invocation: true` are left out of the set total:
+// their description is not in context. They are still parsed and still held to
+// the per-description cap. The key must be the plain scalar `true` or `false`:
+// `yes`, `on` or a quoted "true" is a boolean in one YAML version and a string
+// in another.
 //
 // Exit 1 on any failure. It fails the build; it is not advisory.
 
@@ -37,7 +26,7 @@ import { skillDirs } from "./lib/md.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
-// The owner's choice, not a product constant — see header.
+// See header.
 const PER_DESCRIPTION_CAP = 400;
 const SET_TOTAL_CAP = 8000;
 
@@ -394,7 +383,7 @@ What this check does not decide:
     published as a constant; 400 and 8,000 here are this repo's own choice
   - skills installed from other repos sharing the same listing
   - whether a client honours ${MANUAL_ONLY_KEY}; the set total leaves those
-    skills out on the Claude Code docs' word, read 2026-09-26, and a client
+    skills out on the Claude Code docs' word, and a client
     that lists their descriptions anyway pays more than this total says
   - full YAML — it accepts a strict subset and refuses the rest, so a valid-YAML
     description using a block scalar, an anchor or a flow collection fails

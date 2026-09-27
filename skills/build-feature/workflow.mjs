@@ -1,112 +1,44 @@
-// build-feature — one spec-kit feature from a finished spec to a converged,
-// wall-green, pushed feature branch, with no human gate.
+// build-feature — the spec-kit cycle for one feature, from a clarified spec to a
+// converged, wall-green, pushed feature branch, with no human gate.
 //
 // Run through Claude Code's Workflow tool:
-//   Workflow({ scriptPath: "<this skill dir>/workflow.mjs", args: { ... } })   // nothing is required
-//
-// THE SPEC IS NOT THIS RUN'S. A domain expert writes specs/<NNN>-<name>/spec.md in
-// the project with /speckit-specify and /speckit-clarify, on the feature branch those
-// commands created, and hands the finished spec over; this script starts at plan. No
-// stage, review fix or repair pass edits spec.md — the one artifact in the feature
-// directory this run reads and never writes. A finding whose only remedy is a change to
-// the spec is a question for the domain expert (2026-09-28): review-plan, tasks and
-// analyze collect them, work on the recommended answer, and the run stops after analyze
-// with QUESTIONS.md committed, which the domain expert answers with /speckit-clarify;
-// converge stops where it finds one. Two skills start this script: plan-feature
-// (preflight to analyze) and build-feature (implement to finish).
-//
-// Every stage is a fresh subagent with its own model and effort (the TIERS table
-// below; args.tiers overrides any entry). The script is plain JavaScript in the
-// Workflow sandbox: no filesystem, no Date, no Node APIs — an agent does every
-// read and write, and the script only decides what runs next.
+//   Workflow({ scriptPath: "<this skill dir>/workflow.mjs", args: { ... } })
+// Two skills start it: plan-feature (preflight → analyze, `until: "analyze"`) and
+// build-feature (implement → finish, `from: "implement"`).
 //
 // Stages, in order:
 //   preflight → plan → review-plan ⇄ fix-plan → tasks → analyze ⇄ remediate
 //   → implement (one agent per phase) → converge ⇄ implement → finish
 //
-// Preflight is also discovery, and it runs on every entry, restarts included: the
-// feature directory comes from args.featureDir, else from the checked-out branch name,
-// else — on the base branch — from the one directory under specs/ with a written spec
-// and no plan, and only then from .specify/feature.json, which is git-ignored local
-// state and is the one thing here that can be stale. A run that starts at a later stage
-// still gets state.branch and state.featureDir that way (before 2026-09-21 a
-// `from: "plan"` restart left the branch null, and the handoff and finish prompts
-// degraded to "(unknown)" and HEAD@{1}).
+// Every stage is a fresh subagent with its own model and effort (TIERS below;
+// args.tiers overrides a row). The script is plain JavaScript in the Workflow
+// sandbox: no filesystem, no Date, no Node APIs — agents do every read and write,
+// and the script only decides what runs next.
 //
-// The base branch is discovered, not assumed (owner's decision, 2026-09-25): args.baseBranch,
-// else the project's CLAUDE.md line `Base branch: \`<branch>\`` (the same file that states the
-// definition of done; owner's decision, later the same day), else origin/HEAD, else the one
-// local branch among main, master, develop and dev — and a run where none of those answers,
-// or whose CLAUDE.md line or origin/HEAD names no local branch, stops at preflight before anything is
-// written. Until that day an absent baseBranch fell back to main or master: the service
-// repositories set no origin/HEAD and hold both main and dev, so a run started on dev read
-// dev as a feature branch, merged main into it and committed there.
+// The spec is the domain expert's: no stage edits spec.md. A finding whose only
+// remedy is a spec change is a question for the domain expert: review-plan, tasks
+// and analyze collect them and work on the recommended answer, the run stops after
+// analyze with QUESTIONS.md committed, and the domain expert answers with
+// /speckit-clarify. Converge stops where it finds one.
 //
-// Preflight also puts the repository where the build belongs. The feature's author works
-// on the base branch, so a full preflight started there checks out the feature branch —
-// making it when it does not exist — and then merges the base into it; so does every
-// later entry that finds itself on a feature branch. A later entry started ON the base
-// branch — build-feature closing out a feature implemented on the trunk — makes the
-// feature branch at the base branch's HEAD and moves onto it (2026-09-25), so no stage of
-// any run commits on the base branch. Without that merge the run plans
-// against a spec the author has since moved and fails its final `merge --ff-only` after
-// the whole run is paid for. It writes .specify/feature.json to match, because spec-kit's
-// own scripts resolve the feature from that file (or SPECIFY_FEATURE_DIRECTORY) and
-// never from the branch name.
+// Preflight runs on every entry. It resolves the base branch (args.baseBranch, the
+// root CLAUDE.md `Base branch:` line, origin/HEAD, or the single local trunk name)
+// and the feature directory (args.featureDir, the branch name, the one specified but
+// unplanned directory under specs/, then .specify/feature.json); puts the run on the
+// feature branch, making it when needed; merges the base in; and points
+// .specify/feature.json at the feature, since spec-kit's scripts never read the
+// branch. No stage commits on the base branch.
 //
-// Review and analyze loops stop the run on a SURVIVOR only (owner's decision,
-// 2026-09-24): a serious finding the reviewer labels, by `repeatOf`, as restating one
-// an earlier fix round was handed. They end cleanly on a clean verdict, and at their
-// round cap they do what converge does — apply the last round's findings and go on —
-// with one final review after that fix whose only stop is a survivor, so no fix of a
-// serious finding reaches the next stage unreviewed; its open findings are reported on
-// the return as `ended: "round-cap"`, and the plan review's open blocking and major ones
-// are handed to the first analysis as well. Until that day a cap reached with blocking findings
-// open was needs-human, and nine of the eleven such stops on record were resolved by
-// applying the findings unchanged: these loops have no fixed point either, so a cap
-// buys a stop and not closure. The converge loop
-// has no fixed point either (evidence.md, 2026-09-18), so its only stop
-// test is a severity floor — the loop ends when the round's findings hold nothing
-// above args.severityFloor — and reaching its round cap is a reported outcome the
-// run carries to finish, not a human question; the wall is still the gate. The
-// default floor is NONE: it tolerates no graded finding at all, so the only clean
-// stop is a round that appends nothing and grades nothing, and a long run ends at
-// maxConvergeRounds rather than at the floor (owner's decision 2026-09-18,
-// reversing the LOW default of the same day; evidence.md). A round that reports
-// "converged" while grading findings above the floor appended nothing, so every
-// further round would repeat it identically — which under NONE is any finding at
-// all. Until 2026-09-18 that was a needs-human exit, and it dead-ended the loop on
-// cosmetic findings it could have closed itself (feature specs/002-product exited
-// on four LOW findings — FR traceability citations, an under-described GATES.md
-// table row, two test and naming wordings — every one of them mechanical). The
-// loop now has a third move: it appends those findings itself as a forced
-// convergence phase and implements them (the `forceAppend` tier row), because a
-// floor that refuses converge's non-actionability judgment must also supply the
-// work that judgment withheld. Each finding is forced at most once; a finding that
-// comes back above the floor after its forced round did go to a human, and the
-// handoff says the loop already tried. Like the review and analyze loops, converge
-// runs one pass more than its cap — an assess-only round that appends nothing — so
-// the findings the run reports are the ones no implement pass has closed.
+// Review and analyze loops stop only on a survivor: a serious finding that restates
+// one an earlier fix round was handed. At the round cap they apply the last findings,
+// run one final review, and go on. Converge stops at args.severityFloor (NONE by
+// default, tolerating nothing) or at its round cap; findings a round grades but does
+// not append are appended by the script as a forced phase, each at most once.
 //
-// Every needs-human exit writes a handoff file first — HANDOFF.md in the feature
-// directory — carrying the stage, the reason, the full findings rendered legibly,
-// the branch, the round counts, the stages run, the run's date and where the
-// machine-local run journal is found, committed on the feature branch and pushed when
-// args.push is true. Gap observed 2026-09-18 on run wf_7e4e8726-4b5 (converge, three
-// findings): the payload existed only in the invoking session's tool result, a /tmp
-// file and the run journal under ~/.claude/projects/, so no colleague could reach it.
-// The sandbox has no filesystem, so the write is one agent (the `handoff` tier row,
-// opus low) dispatched on the way out; it is wrapped so that a handoff which fails,
-// errors or returns nothing still yields the full needs-human payload, with the
-// outcome recorded under `handoff` on the return. An exit before discovery has
-// resolved a feature directory, or one taken on the base branch, writes nothing and
-// says so there instead: there is no feature branch to carry the file, and a dirty
-// tree is one of the states preflight refuses on, so a commit at the repo root — or
-// on the base branch — would sweep it up. Since 2026-09-25 the only exits taken on the
-// base branch are preflight's own, before it has moved the run onto the feature branch —
-// a missing input artifact among them, checked before any branch is made — and an
-// unresolved base branch or an unreadable or stale CLAUDE.md base-branch line, which stop
-// before preflight's agent runs, commit nothing.
+// Every needs-human exit commits HANDOFF.md (and QUESTIONS.md when questions are held)
+// in the feature directory on the feature branch, pushed when args.push is true. An
+// exit before the run is on a feature branch writes nothing; the return value is the
+// report.
 
 export const meta = {
   name: 'build-feature',
@@ -124,27 +56,18 @@ export const meta = {
 }
 
 // ---------------------------------------------------------------------------
-// Tiers. The roster is one model at three efforts — Opus low, Opus medium, Opus
-// high (owner's decision, 2026-09-23: every subagent runs on Opus 5.5, no other
-// model line) — and every row, from this table or from args.tiers, must be one of
-// them; tier() refuses any other model, and xhigh or max, before the first agent
-// starts. The model is the alias `opus`, not a pinned id: the Workflow authoring
-// reference names no accepted values for agent()'s model, and the Agent tool's
-// model takes aliases only. The alias resolves to the newest Opus, which is Opus
-// 5.5 as of 2026-09-23, so a later Opus release moves every row with no edit here.
-// The rationale per row is in SKILL.md.
+// Tiers. The roster is Opus at low, medium or high effort; tier() refuses any other
+// model or effort, from this table or args.tiers, before the first agent starts.
+// `opus` is an alias, so it follows the newest Opus. Per-row reasons are in SKILL.md.
 // ---------------------------------------------------------------------------
 const ROSTER = { opus: ['low', 'medium', 'high'] }
 
-// The severity scale is /speckit-converge's own Step 5 scale, most severe first, and
-// the same four values the analyze schema carries. args.severityFloor names the
-// highest severity the converge loop tolerates. NONE is the default and tolerates
-// nothing: it ranks below every graded severity, so every finding the assessment
-// grades is above it. CRITICAL is not offerable: Step 5 defines it as a constitution
-// MUST violation or a gap blocking a P1 user story, so a floor there tolerates every
-// finding the scale has, stops the loop after one round, and is a foot-gun wearing
-// the shape of a knob. The floor is checked beside the tier rows, so a bad one fails
-// the run before the first agent starts rather than hours in at the converge stage.
+// The severity scale is /speckit-converge's Step 5 scale, most severe first, and the
+// four values the analyze schema carries. args.severityFloor is the highest severity
+// the converge loop tolerates. NONE, the default, tolerates nothing: it ranks below
+// every graded severity. CRITICAL is refused: a floor there tolerates every finding,
+// constitution violations included, and ends the loop after one round. The floor is
+// checked before the first agent starts.
 const SEVERITY_ORDER = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']
 const SEVERITY_FLOORS = ['HIGH', 'MEDIUM', 'LOW', 'NONE']
 const TIERS = {
@@ -159,37 +82,18 @@ const TIERS = {
   phases: { model: 'opus', effort: 'low' },
   implement: { model: 'opus', effort: 'medium' },
   converge: { model: 'opus', effort: 'medium' },
-  // Writes the tasks a converge round graded and declined to append. Unlike the
-  // `handoff` row below, the document is not rendered for it: it is handed findings
-  // and must author one task per finding — the imperative work that closes it and its
-  // trace back to the finding's location. One closure route, the fix. Until 2026-09-20
-  // a task carried a second, "record why it is not a defect", and on product-catalog
-  // 004 every task of six forced rounds was closed by it while four of the findings
-  // were fixable in code the same day; see evidence.md. That is authorship over text
-  // the implement stage then executes, so it is priced with converge and implement
-  // rather than with handoff: opus medium. A cheaper row would paraphrase a finding
-  // into a task that closes on something else, and nothing downstream would notice.
-  // Opus high was not taken: it is kept for plan and its refutation, the two rows
-  // every later stage inherits from, and this row's output is implemented and
-  // wall-checked rather than trusted.
+  // Writes one task per finding a converge round graded and did not append. It authors
+  // tasks from findings rather than copying a rendered document, and a paraphrased task
+  // could close on something else, so it is priced with converge and implement.
   forceAppend: { model: 'opus', effort: 'medium' },
-  // Runs only when a forced append reports it failed, and answers one question about
-  // tasks.md: is the forced phase wholly absent, wholly present, or neither. Git is
-  // the oracle — at that instant the only uncommitted change to tasks.md is the failed
-  // agent's own partial write — so the evidence is deterministic, but the two things
-  // this row must get right are not cheap. It may delete lines from tasks.md (only a
-  // partial forced phase, only this round's), where a wrong deletion removes real
-  // tasks and nothing downstream would notice; and it must return "unsure" rather
-  // than a guess, which is a calibration judgment the low-effort rows are worst at.
-  // Priced with every other row in this table that writes: opus medium. Its verdict is not
-  // taken on its own word — the parse-only `phases` row re-reads the file afterwards
-  // and the loop escalates where the two disagree.
+  // Runs only after a forced append reports failure: decides from git whether the
+  // forced phase is wholly absent, wholly present, or neither. It may delete a partial
+  // phase and must answer "unsure" rather than guess, so it is not on the low tier.
+  // The parse-only `phases` row re-reads the file afterwards.
   reconcileTasks: { model: 'opus', effort: 'medium' },
-  // Runs only when a converge round offers a spec.md deferral the run has not checked
-  // yet, and answers one question per quotation: is this text in spec.md. A text search
-  // with no judgment in it, so the cheapest tier; its answer decides whether a finding
-  // is exempt from forcing, and an exemption resting on a quotation spec.md does not
-  // hold would let the assessment defer work by quoting plan.md or by inventing a line.
+  // Checks whether each spec.md deferral quotation a converge round offers is in
+  // spec.md. A text search, so the cheapest tier; without it the assessment could
+  // exempt work by quoting plan.md or an invented line.
   checkDeferrals: { model: 'opus', effort: 'low' },
   finish: { model: 'opus', effort: 'low' },
   // Writes one file whose whole text this script hands it, commits it, pushes it.
@@ -220,25 +124,9 @@ const cfg = {
   mergeInto: a.mergeInto || null,
   from: a.from || 'preflight',
   until: a.until || 'finish',
-  // 3, not 2, since 2026-09-18. The 2026-09-17 record (evidence.md) is five launches
-  // out of seven ending needs-human at a review or analyze round cap, and the operator's
-  // resolution every time was to run one more fix agent over the open findings — the
-  // exact round the cap had refused. A cap that escalates work one more round would have
-  // finished is the loop declining work it could do. 3 is the smallest increment the
-  // evidence supports and the largest it supports: that record also says most of the
-  // findings at the cap were holes opened by the previous round's fix, so these loops
-  // have no fixed point either and a bigger cap buys rounds rather than closure — and
-  // the artifact reviews are where both early runs spent their tokens (1.19M and
-  // 0.91M). Measured 2026-09-22 over 28 run journals: six runs took a third round —
-  // four at review-plan, one at review-spec, one at analyze — and all six still ended
-  // needs-human at the cap, so the raise bought rounds and not closure. Raising it
-  // further is the same trade at a higher price; the unmeasured half is the
-  // counterfactual, whether a fourth round would have closed any of the six. Still
-  // untaken on 2026-09-24, though it looked taken: the launching session applied the
-  // fourth review's findings on seven review-plan stops and restarted at review-plan,
-  // and that start ran no review until the same day, so no fifth review ever read them.
-  // Since 2026-09-24 the cap no longer stops the run (reviewLoop below): it is the
-  // number of ordinary fix rounds, after which one more fix and one final review run.
+  // The number of ordinary fix rounds in the review and analyze loops. The cap does
+  // not stop the run (reviewLoop below): after it, one more fix and one final review
+  // run. These loops have no fixed point, so a larger cap buys rounds, not closure.
   maxReviewRounds: a.maxReviewRounds ?? 3,
   maxAnalyzeRounds: a.maxAnalyzeRounds ?? 3,
   maxConvergeRounds: a.maxConvergeRounds ?? 6,
@@ -284,13 +172,10 @@ for (const name of Object.keys(cfg.tiers)) tier(name)
 // Schemas — every stage returns data, never prose.
 // ---------------------------------------------------------------------------
 // One field, one description, on every stage that can write a task or resolve a
-// finding: the review-plan fixer, the tasks stage and the analyze remediator (S.done),
-// and since 2026-09-24 the converge assessment and the forced append. Every stage that
-// returns it is read by the script — a field the schema says is read and the script
-// ignores is the defect 211809f fixed. Since 2026-09-28 each entry is a question for the
-// domain expert, written to QUESTIONS.md and answered with /speckit-clarify (owner's
-// decision): review-plan, tasks and analyze collect them and the run stops after analyze;
-// converge still stops where it finds one.
+// finding: the review-plan fixer, the tasks stage, the analyze remediator, the
+// converge assessment and the forced append. Each entry is a question for the domain
+// expert, written to QUESTIONS.md: review-plan, tasks and analyze collect them and the
+// run stops after analyze; converge stops where it finds one.
 const SPEC_CHANGES_FIELD = {
   type: 'array',
   items: {
@@ -305,10 +190,10 @@ const SPEC_CHANGES_FIELD = {
   description: 'findings whose only remedy is an edit to the feature\'s spec.md, which no stage of this run may make: one question per finding for the domain expert, who answers it into the spec. Put here only what cannot be resolved in the artifacts you may write, and never a question listed in the prompt as already asked.',
 }
 
-// Identity across rounds for the review and analyze loops (2026-09-24), on converge's
-// precedent: the reviewer or analyzer is handed the numbered list of findings earlier
-// fix rounds were handed, and labels each finding it returns with the entry it restates.
-// The script, not the agent's prose, decides from this field whether a finding survived.
+// Identity across rounds for the review and analyze loops: the reviewer or analyzer
+// is handed the numbered list of findings earlier fix rounds were handed, and labels
+// each finding it returns with the entry it restates. The script, not the agent's
+// prose, decides from this field whether a finding survived.
 const REPEAT_OF_FIELD = {
   type: 'integer',
   description: 'the number of the earlier-round finding this one restates, from the numbered list in the prompt; 0 or absent when it is new or no list was given',
@@ -416,7 +301,7 @@ const S = {
       specChanges: SPEC_CHANGES_FIELD,
     },
   },
-  // The tasks stage in update mode (2026-09-25): what it changed, task by task, so the
+  // The tasks stage in update mode: what it changed, task by task, so the
   // return value carries the delta and the certification below has something to hold
   // the file against.
   tasksUpdated: {
@@ -657,49 +542,32 @@ const UNATTENDED = [
   'Your final message is not read by a person: it is the return value, and it must match the schema you were given.',
 ].join(' ')
 
-// The spec belongs to the domain expert who wrote it, and this run reads it and never
-// writes it (owner's decision, 2026-09-21: features are specified by a person in the
-// project with stock spec-kit, and the unattended build starts at plan). Every stage
-// that could reach the file is handed this, in these words, so the ban reads the same
-// wherever an agent meets it; the stages that can return a finding carry `specChanges`
-// beside it, which is the route out — the finding goes to the domain expert as a question.
+// The spec is the domain expert's; this run reads it and never writes it. Every stage
+// that could reach the file is handed this text, so the ban reads the same everywhere;
+// stages that can return a finding carry `specChanges`, which sends it to the domain
+// expert as a question.
 const SPEC_IS_NOT_OURS = spec =>
   `THE SPEC IS NOT YOURS TO EDIT. \`${spec}\` was written by the feature's domain expert and is the fixed input to this run: never edit it, never regenerate it, never "align" it with anything, and never add, reword, renumber or delete a requirement, a success criterion, a clarification or an assumption in it. Every other artifact under the feature directory is yours to fix.`
 
-// A task is work an implement agent can finish. On reference-data 003, 2026-09-23, an
-// analysis remediation added T104 — "check that spec.md's Clarifications carries a
-// /speckit-clarify session, run by the spec's owner and dated after this plan" — and
-// gated two closing tasks on it, so the run built eight phases wall-green and then
-// stopped at implement on a task no agent could close; the owner then confirmed every
-// reading the plan had already taken, unchanged. The plan decides an open reading and
-// records it (the "Unattended" rule); a question only the author can answer is a
-// `specChanges` entry, which reaches the domain expert before implement.
-// Carried by every stage that writes tasks: tasks and remediate, and since 2026-09-24
-// converge and the forced append, which until then could write the same gating task.
-// Every one of them returns `specChanges` and the script reads it, so the constant no
-// longer offers a stage without the field a way to leave the question out.
+// A task is work an implement agent can finish. A task that waits on a person — an
+// owner's answer, a clarify session, a sign-off — stops a run at implement on work no
+// agent can close. The plan decides an open reading and records it; a question only
+// the domain expert can answer is a `specChanges` entry. Carried by every stage that
+// writes tasks: tasks, remediate, converge and the forced append.
 const NO_TASK_WAITS_ON_A_PERSON =
   'No task may wait on a person: never write a task whose completion needs an owner\'s answer, a /speckit-clarify session, a sign-off or a review by anyone outside this run, and never make another task depend on one. A reading of the spec that the plan has already decided and recorded stands as the plan wrote it; a question only the domain expert can answer is not a task — it goes in `specChanges`, which takes it to the domain expert.'
 
-// A task the tasks stage's update mode (2026-09-25) found no longer needed. Spec-kit's
-// checklist format has no such state — a task is "- [ ]" or "- [x]" — and both are wrong
-// for it: an open box is work implement would run and the traceability gate counts as in
-// flight, a ticked one claims work that was not done. So the box goes and the line stays,
-// struck through with its reason. The id stays in the file, so /speckit-converge's append
-// contract ("scan all existing task IDs; let M be the maximum") never reuses it, and no
-// checkbox pattern — speckit-implement's, the service repos' OPEN_TASK — matches the line.
-// Every stage that counts or runs tasks is told the same, in these words.
+// A task the tasks stage's update mode found no longer needed. Spec-kit's checklist
+// has no such state — an open box is work implement would run and the traceability
+// gate counts as in flight, a ticked one claims work not done — so the box goes and
+// the line stays, struck through with its reason. The id stays in the file, so
+// /speckit-converge's append ("let M be the maximum") never reuses it, and no checkbox
+// pattern matches the line. Every stage that counts or runs tasks is told the same.
 //
-// The line keeps the id and drops the task's text, continuation lines included, and names
-// no FR or SC id (adversarial review, 2026-09-25). The service repos' traceability gate
-// reads every id token anywhere in tasks.md, not only on task lines: a qualified or bare id
-// the spec no longer defines is a failing citation (its checks b and b2), and one it still
-// defines counts as "named by some task" (its check g). So a removed line that kept its
-// text turned the wall red whenever the spec edit deleted the requirement — the commonest
-// reason a task is removed — and otherwise hid a requirement no live task names. Run
-// against copies of reference-data's check-traceability.mjs (identical in product-catalog
-// and customer-party-adapter): the text-keeping line failed on a deleted id and passed a
-// requirement only it named. The task's text is in the update commit's parent.
+// The line keeps the id, drops the task's text, and names no FR or SC id: the
+// traceability gate reads every id anywhere in tasks.md, so an id the spec no longer
+// defines turns the wall red and one it still defines counts as named by a task. The
+// task's text is in the update commit's parent.
 const REMOVED_TASK = 'A line of tasks.md whose checkbox is replaced by its task id struck through and which carries "(removed: <reason>)" — `- ~~T015~~ (removed: …)` — is a removed task: it is not a task, it is neither open nor done, it covers no requirement, and its id is never reused.'
 const REMOVED_LINE = '`- ~~T015~~ (removed: <what the task was for, and what in the spec or plan makes it unneeded>)`'
 
@@ -771,40 +639,30 @@ const state = {
 // ---------------------------------------------------------------------------
 // The handoff artifact.
 //
-// A needs-human exit is a decision handed back to a person, and until 2026-09-18 it
-// was handed back only to the session that started the run: the payload lived in
-// that session's tool result, in a file under /tmp, and in the run journal under
-// ~/.claude/projects/ — three machine-local places, none of them in the repository.
-// Run wf_7e4e8726-4b5 stopped at converge with three findings no colleague could
-// read. So every needs-human exit now leaves one committed file behind.
+// Every needs-human exit leaves one committed file, so the report is in the
+// repository and not only in the launching session's tool result or the machine-local
+// run journal.
 //
 // The document is rendered here rather than described to the agent. The sandbox has
-// no filesystem, so an agent must do the write; making that agent compose the report
-// would let the cheapest tier in the table paraphrase a finding, reorder it or drop
-// it. It gets finished Markdown and one placeholder it can only substitute, the date,
-// because the script has no Date.
+// no filesystem, so an agent must do the write; letting it compose the report would
+// let the cheapest tier paraphrase, reorder or drop a finding. It gets finished
+// Markdown and one placeholder, the date, because the script has no Date.
 //
-// It names no journal path (2026-09-24). The script has no handle on its own run id —
-// the Workflow API gives a script none — and until that day the handoff agent took the
-// newest wf_*.json on disk, which on 25 of 27 handoffs was an earlier run's journal or
-// nothing, because the running journal is, by inference, not yet written. A durable
-// file stating a false path is worse than one stating where the true one is kept: the
-// run id is on the Workflow tool result the launching session received.
+// It names no journal path: the script has no handle on its own run id, and the newest
+// journal on disk is not this run's. The run id is on the Workflow tool result the
+// launching session received.
 // ---------------------------------------------------------------------------
 const HANDOFF_FILE = 'HANDOFF.md'
 
-// Questions for the domain expert (owner's decision, 2026-09-28). The four spec handoff
-// skills that ran before the build were removed the same day; their questions are now
-// the ones the build itself raises. review-plan, tasks and analyze collect them instead
-// of stopping at the first, and each stage after the one that raised a question works on
-// its recommended answer. The run stops after analyze and commits QUESTIONS.md beside
-// HANDOFF.md. The domain expert answers on the base branch with stock /speckit-clarify,
-// which takes the file as its prioritisation context, asks up to five questions per run
-// with a recommended answer each, and writes the answers into spec.md. The technical
-// expert then reruns plan-feature from review-plan; that run's sync merges the answers in.
-// A run whose analysis ends with no question removes the file, and a start at implement
-// or later refuses while it is there. Rejected: stopping at the first question, one
-// round trip to the domain expert per stage that finds one.
+// Questions for the domain expert. review-plan, tasks and analyze collect them instead
+// of stopping at the first, and each later stage works on the recommended answer. The
+// run stops after analyze and commits QUESTIONS.md beside HANDOFF.md. The domain expert
+// answers on the base branch with /speckit-clarify, which takes the file as its
+// prioritisation context, asks up to five questions per run with a recommended answer
+// each, and writes the answers into spec.md. The technical expert then reruns
+// plan-feature from review-plan; its sync merges the answers in. A run whose analysis
+// ends with no question removes the file, and a start at implement or later refuses
+// while it is there.
 const QUESTIONS_FILE = 'QUESTIONS.md'
 
 const addQuestions = (stage, list) => {
@@ -908,14 +766,13 @@ const detailBlock = detail => {
 // for a missing input artifact, whose restart is the stage that writes it — and the
 // document's restart paragraph follows it rather than contradicting the reason.
 // Every exit whose whole remedy is a change to spec.md passes `restartFrom` itself —
-// "review-plan" since 2026-09-24 — and the return value carries it beside `stage`.
+// "review-plan" — and the return value carries it beside `stage`.
 const restartOf = detail => (detail && !Array.isArray(detail) && typeof detail === 'object' && STAGES.includes(detail.restartFrom) ? detail.restartFrom : null)
 const restartAt = (detail, restartFrom) => (STAGES.includes(restartFrom) ? restartFrom : restartOf(detail))
 
-// The restart after a spec edit (owner's decision, 2026-09-24). `from: "review-plan"`
-// reads the plan already on the branch against the edited spec and repairs it in place;
-// `from: "plan"` regenerates plan.md whole and discards every review fix, and on eight
-// restarts that way the regenerated plan hit a fresh review-plan cap five times.
+// The restart after a spec edit. `from: "review-plan"` reads the plan already on the
+// branch against the edited spec and repairs it in place; `from: "plan"` regenerates
+// plan.md whole and discards every review fix.
 const SPEC_EDIT_RESTART = 'review-plan'
 
 // Where the base branch came from, for the handoff table and the preflight prompt.
@@ -969,12 +826,10 @@ const handoffDoc = (stage, why, detail, restartFrom) => [
   `_Written by \`build-feature\`'s handoff stage. The next needs-human exit on this feature overwrites it; \`git log -p -- ${state.featureDir}/${HANDOFF_FILE}\` holds the earlier ones._`,
 ].filter(l => l !== null).join('\n')
 
-// Returns the handoff record for the return value and never throws: a handoff that
-// fails must not cost the caller the verdict, because losing the findings because the
-// write failed is strictly worse than the behaviour this replaced. Every failure path
-// — no feature directory, a thrown dispatch, a skipped or dead agent, an agent that
-// reports it could not write — ends in a record saying so, and the caller returns its
-// full payload regardless.
+// Returns the handoff record for the return value and never throws: a failed handoff
+// must not cost the caller the verdict. Every failure path — no feature directory, a
+// thrown dispatch, a skipped or dead agent, an agent that reports it could not write —
+// ends in a record saying so, and the caller returns its full payload regardless.
 const writeHandoff = async (stage, why, detail, restartFrom) => {
   // Every preflight exit lands here: no feature has been created, so there is no
   // feature directory and no feature branch to carry the file. The write is skipped
@@ -982,21 +837,15 @@ const writeHandoff = async (stage, why, detail, restartFrom) => {
   // next person reproduces in one command — a dirty tree, the wrong branch, a missing
   // speckit skill, no definition-of-done command — not a finding that exists nowhere
   // else; and a dirty tree is one of the things preflight refuses on, so a commit at
-  // the root would sweep somebody's uncommitted work into a handoff commit.
+  // the root would put somebody's uncommitted work into a handoff commit.
   if (!state.featureDir) {
     log(`no handoff file: the run stopped at ${stage} before a feature directory was resolved; the detail on the return value is the whole report`)
     return { written: false, path: null, note: 'no feature directory — the run stopped before discovery resolved one, so there is nowhere in the repo the file belongs. The detail on this return value is the whole report.' }
   }
-  // The file is committed on whatever branch the run is standing on, so a run that
-  // never left the base branch gets no handoff, and neither does one on a detached HEAD,
-  // where the commit would be on no branch at all and `git push origin HEAD` refuses.
-  // Since 2026-09-25 a base-branch exit is only a preflight exit taken before preflight
-  // moved the run onto the feature branch — a dirty tree, a
-  // feature that cannot be resolved, a feature branch that already holds work the base
-  // branch lacks, an input artifact missing on the branch the run would work on — because
-  // every other run is on the feature branch by then, a later-stage
-  // start on the trunk included. A commit on the trunk is not this script's to make, and a
-  // dirty tree is one of the states preflight refuses on.
+  // The file is committed on the branch the run stands on, so a run still on the base
+  // branch gets no handoff, and neither does one on a detached HEAD, where the commit
+  // would be on no branch and `git push origin HEAD` refuses. Only preflight exits are
+  // taken on the base branch; every later stage runs on the feature branch.
   if (state.branch === 'HEAD') {
     log('no handoff file: the checkout is a detached HEAD, where a commit is on no branch; the detail on the return value is the whole report')
     return { written: false, path: null, note: 'the checkout is a detached HEAD, and a handoff is committed on the branch the run is on — there is none. The detail on this return value is the whole report.' }
@@ -1005,13 +854,13 @@ const writeHandoff = async (stage, why, detail, restartFrom) => {
     log(`no handoff file: the run is standing on the base branch (${state.baseBranch || 'unknown'}), where this script commits nothing; the detail on the return value is the whole report`)
     return { written: false, path: null, note: `the run is on the base branch (${state.baseBranch || 'unknown'}), and a handoff is committed on the branch the run is on — this script does not commit to the trunk. The detail on this return value is the whole report.` }
   }
-  // No base branch resolved (2026-09-25): the run stopped before preflight's agent ran, so
+  // No base branch resolved: the run stopped before preflight's agent ran, so
   // it does not know whether it stands on the trunk, and commits nothing anywhere.
   if (!state.baseBranch) {
     log('no handoff file: no base branch was resolved, so the run does not know whether it stands on the trunk; the detail on the return value is the whole report')
     return { written: false, path: null, note: 'no base branch was resolved, so the run stopped before preflight could tell whether the checkout is the trunk, and it commits nothing on a branch it cannot place. The detail on this return value is the whole report.' }
   }
-  // A preflight told to stop before making a branch that made one anyway (2026-09-25): the
+  // A preflight told to stop before making a branch that made one anyway: the
   // branch holds no commit of this run, and a handoff committed there would give it one.
   if (state.handoffRefused) {
     log(`no handoff file: ${state.handoffRefused}`)
@@ -1094,39 +943,24 @@ const run = async (name, stage, prompt, schema, group) => {
 // A review/fix loop: review with the reviewer tier; when it returns a blocking
 // or major finding, the fixer applies every finding and the review runs again.
 //
-// It stops the run on a SURVIVOR and on nothing else of its own (owner's decision,
-// 2026-09-24). A survivor is a serious finding that restates one an earlier fix round
-// was handed — by exact identity, or by the reviewer's own `repeatOf` label against the
-// numbered list of handed findings it is given — so the loop can show the same defect
-// twice. That is converge's forced-once rule one stage earlier: the loop tried, the
-// attempt did not take, and what is left is a decision. Both owner-needed cap stops on
-// record read as survivors under the labelling rule in handedFindings — wf_c65ab41b-8a6,
-// a lock protocol the review refuted again after each fix, and wf_e5ab8e1a-c53, the
-// FR-024 gap the first remediation declared as a narrowing and the fourth analysis
-// graded HIGH again — but the label is the reviewer's. On the first case's full agent
-// transcripts (read 2026-09-24), round 3 refuted R5's no-deadlock property (its re-lock
-// step deadlocks) and round 4 refuted the same property at the same place again after
-// round 3's fix, so round 4 restates a round-3 entry in the rule's plain sense; only the
-// earlier link, round 2's race proof to round 3's deadlock, needs the wider reading.
+// It stops the run on a SURVIVOR and on nothing else of its own. A survivor is a
+// serious finding that restates one an earlier fix round was handed — by exact
+// identity, or by the reviewer's own `repeatOf` label against the numbered list of
+// handed findings — so the loop has tried once and the attempt did not take; what is
+// left is a decision.
 //
-// The cap no longer stops. The rejected default is "stop at the cap": nine of the
-// eleven cap stops on record were resolved by applying the last round's findings
-// unchanged (or once by applying none), because the loop has no fixed point and a
-// fourth review finds new holes as surely as a first. So after `max` ordinary fix
-// rounds the review after the last of them is applied too — the cap fix — and one
-// FINAL review reads the result. Its only stop is a survivor; its other findings are
-// not applied here, since nothing in this loop would review that fix, and are returned
-// open as `ended: "round-cap"`. So no fix of a serious finding reaches the next stage
-// unreviewed. The one fix that does, as before, is the minors pass on an approve. The
-// final review's open blocking and major findings are not left on the return value
-// alone: the first analysis is handed them (analyzeCarry below), so a remediation
-// applies what still holds and the next analysis reads that fix — and a finding the
-// reviewer failed to label a repeat meets the survivor test a second time there.
+// The cap does not stop the run: the loop has no fixed point, and a further review
+// finds new findings as surely as a first. After `max` ordinary fix rounds the review
+// after the last of them is applied too — the cap fix — and one FINAL review reads the
+// result. Its only stop is a survivor; its other findings are not applied, since
+// nothing here would review that fix, and are returned open as `ended: "round-cap"`.
+// The one fix that reaches the next stage unreviewed is the minors pass on an approve.
+// The final review's open blocking and major findings are handed to the first analysis
+// (analyzeCarry below), so a remediation applies what still holds.
 //
-// A fix round that reports `specChanges` hands them to addQuestions (2026-09-28): the
-// only remedy the fixer could see is an edit to spec.md, which this run does not make,
-// so they go to the domain expert after analyze and the loop goes on with the
-// recommended answer. Until that day the loop ended on them.
+// A fix round's `specChanges` go to addQuestions: the fixer's only remedy is an edit to
+// spec.md, which this run does not make, so they go to the domain expert after analyze
+// and the loop goes on with the recommended answer.
 const specChangesOf = r => (r && Array.isArray(r.specChanges) ? r.specChanges.filter(Boolean) : [])
 
 const normText = v => String(v || '').toLowerCase().replace(/\s+/g, ' ').trim().replace(/\.$/, '')
@@ -1225,74 +1059,44 @@ async function reviewLoop({ kind, group, reviewer, fixer, reviewPrompt, fixPromp
 // ---------------------------------------------------------------------------
 // Stage: preflight — discovery, the feature branch, and the sync, on every entry.
 //
-// The feature this run builds already exists when the run starts: its domain expert
-// wrote specs/<NNN>-<name>/spec.md with /speckit-specify and /speckit-clarify. What he
-// does NOT necessarily do is leave the repository on a feature branch — he works on the
-// base branch (owner's statement of how the team works, 2026-09-21) — so preflight
-// establishes the feature, puts the repository on the feature branch, making it when it
-// does not exist, and brings that branch in step with the base.
+// The domain expert writes specs/<NNN>-<name>/spec.md on the base branch, so preflight
+// establishes the feature, puts the repository on the feature branch, making it when
+// it does not exist, and brings that branch in step with the base.
 //
-// Resolution order, and why it is not spec-kit's own: `.specify/feature.json` is
-// git-ignored machine-local state (`.specify/.gitignore` ships the rule), rewritten
-// whenever a machine runs /speckit-specify. Ours is whatever OUR last local run left —
-// on a fresh pull it names the previous feature — so trusting it first would build the
-// wrong feature from a file no commit ever touched. The branch name is the authority
-// where there is one; on the base branch the answer is the one specified-but-unplanned
-// feature under specs/, which is a rule and not a guess, and ambiguity stops the run.
-// feature.json is consulted last and never overrides.
+// Resolution order: the branch name where there is one; on the base branch, the one
+// specified-but-unplanned feature under specs/, with ambiguity a stop;
+// .specify/feature.json last, since it is git-ignored machine-local state that names
+// whatever feature this machine last specified.
 //
-// Then the run makes spec-kit agree, because resolving it here is not enough. Stock
-// spec-kit 1.0.8's `.specify/scripts/bash/common.sh` resolves the feature from
-// SPECIFY_FEATURE_DIRECTORY, then from .specify/feature.json, and from NOTHING else:
-// `get_current_branch()` returns $SPECIFY_FEATURE or the empty string and never reads
-// git, so the branch name reaches no speckit skill and no branch name is refused. A
-// stale feature.json therefore sends /speckit-plan into the previous feature's directory
-// however well this script resolved the new one. Writing that one git-ignored file is
-// the single write preflight is allowed. Where a repository tracks it instead, it is
-// left alone and every stage prompt carries SPECIFY_FEATURE_DIRECTORY, which common.sh
-// honours first — and which it then persists into feature.json itself unless the caller
-// passed --no-persist, a write this script cannot prevent and does not pretend to.
+// Then spec-kit is made to agree: its common.sh resolves the feature from
+// SPECIFY_FEATURE_DIRECTORY, then .specify/feature.json, and never from git, so a stale
+// feature.json sends /speckit-plan into the wrong directory. Writing that git-ignored
+// file is the single write preflight makes. Where a repository tracks it, it is left
+// alone and every stage prompt carries SPECIFY_FEATURE_DIRECTORY, which common.sh
+// honours first (and persists into feature.json unless --no-persist is passed).
 //
-// The sync runs on every entry: the expert keeps editing spec.md on the base branch
-// while the build's commits pile up on the feature branch, so without it a run plans
-// against a spec that has moved and ends in a failed `git merge --ff-only` at finish,
-// after the whole run has been paid for. It is a merge and never a rebase, because the
-// branch may already be pushed. It is conflict-free by construction for the spec — the
-// build never writes spec.md — and a conflict anywhere else stops the run with the
-// paths. A spec that changed under a run told to start after review-plan is a
-// needs-human exit whose restart is `from: "review-plan"` (since 2026-09-24; `plan` until
-// then), which reads the plan already written against the new text and repairs it.
+// The sync runs on every entry: the domain expert keeps editing spec.md on the base
+// branch, so without it a run plans against a spec that has moved and fails its final
+// `git merge --ff-only`. It is a merge, never a rebase, because the branch may be
+// pushed; it cannot conflict on the spec, which the build never writes, and a conflict
+// elsewhere stops the run with the paths. A spec that changed under a run told to start
+// after review-plan is a needs-human exit whose restart is `from: "review-plan"`.
 //
-// The discovery half runs even on a start at a later stage: before 2026-09-21 a
-// `from: "plan"` restart left state.branch null, the handoff table said "(unknown)" and
-// finish merged from HEAD@{1}. A later-stage run standing on the base branch — which is
-// a close-out of a feature implemented on the trunk, as 001 was — is
-// resuming work that already lives there, and until 2026-09-25 it ran there: no branch,
-// no sync, and every converge, implement and fix agent committing on the trunk, while
-// SKILL.md said the run never does. Since then preflight makes the feature branch at the
-// base branch's HEAD and checks it out first (owner's decision, 2026-09-25), under the
-// name a full preflight would make, and only after the same clean-tree check a full
-// preflight makes — `git checkout -b` carries uncommitted changes onto the new branch,
-// where the run would commit them. A feature branch of that name that already exists is
-// reused only when it is an ancestor of the base HEAD, so moving it forward loses nothing;
-// one holding work the base lacks is a problem, because which of the two places holds the
-// feature is not the run's to choose. The script cannot run git, so the ancestry check is
-// the agent's; the prompt makes it and `checkout -B` one `&&` command, so the move cannot
-// run past a failed check, and a branch that exists nowhere is made with `-b`, which git
-// refuses over one that does. A detached HEAD stops the run at preflight on every entry.
-// The rejected default was to stop and ask: a person step for a mechanical act a full run
-// already performs. args.wall is still required on
-// a start after preflight, because only the full check reads CLAUDE.md for it; the
-// base-branch line is read on every entry, by the agent that runs before preflight's.
+// A later-stage start on the base branch — closing out a feature implemented on the
+// trunk — makes the feature branch at the base branch's HEAD and checks it out first,
+// after the same clean-tree check a full preflight makes, since `git checkout -b`
+// carries uncommitted changes onto the new branch. An existing branch of that name is
+// reused only when it is an ancestor of the base HEAD; one holding work the base lacks
+// is a problem, because which place holds the feature is not the run's to choose. The
+// prompt makes the ancestry checks and `checkout -B` one `&&` command. A detached HEAD
+// stops the run on every entry. args.wall is required on a start after preflight,
+// because only the full check reads CLAUDE.md for it.
 //
-// A later-stage start also checks that the feature artifacts its stages read exist
-// (2026-09-24). Until then `from: "review-plan"` with no plan.md, or `from: "implement"`
-// with no tasks.md, was caught by nothing in the script: the first agent of the stage met
-// the absence, and spec-kit's own check-prerequisites.sh refuses a missing plan.md in
-// every mode and a missing tasks.md under --require-tasks, so what came back was an agent
-// failing inside a stage rather than a stop that names the start that would make the
-// file. The list is derived per stage from what its prompt and its speckit skill read,
-// less what a stage earlier in the same run writes; spec.md is step 4's own check.
+// A later-stage start also checks that the feature artifacts its stages read exist, so
+// a missing plan.md or tasks.md is a stop naming the start that writes it rather than
+// an agent failing inside a stage. The list is derived per stage from what its prompt
+// and its speckit skill read, less what an earlier stage of the same run writes;
+// spec.md is step 4's own check.
 // ---------------------------------------------------------------------------
 const STAGE_READS = {
   'review-plan': ['plan.md'], // the review prompt refutes plan.md; its companions are read where present
@@ -1316,63 +1120,38 @@ const inputsToCheck = (() => {
 })()
 
 // ---------------------------------------------------------------------------
-// The base branch is discovered, not assumed (owner's decision, 2026-09-25).
+// The base branch is discovered, not assumed.
 //
-// Precedence: args.baseBranch; else the project's own statement of it, one line in the
-// repository root's CLAUDE.md of exactly the form BASE_LINE_FORMAT (owner's decision, later
-// the same day: the file that states the definition of done states the trunk too); else
-// `origin/HEAD`, the remote's default branch as the last clone or `git remote set-head`
-// recorded it, where it names a local branch (one that names none is unresolved); else the one local branch among TRUNK_NAMES, where exactly one exists; else
-// unresolved, which stops the run at preflight before any agent writes. Nothing is fetched:
-// `git remote show origin` and `git ls-remote` would answer the origin/HEAD question from
-// the network, and this run never goes there.
+// Precedence: args.baseBranch; else one line in the repository root's CLAUDE.md of
+// exactly the form BASE_LINE_FORMAT; else `origin/HEAD`, where it names a local branch
+// (one that names none is unresolved); else the one local branch among TRUNK_NAMES,
+// where exactly one exists; else unresolved, which stops the run at preflight before
+// any agent writes. Nothing is fetched.
 //
-// The CLAUDE.md line exists because the step after it resolves nothing where the runs are:
-// in all three service repositories origin/HEAD is unset and both dev and main exist, so
-// until the line every run there without args.baseBranch stopped here. Rejected: `git
-// remote set-head` per clone, lost on every fresh clone, and args.baseBranch on every run,
-// a person step on every run. The line is a committed fact of the repository, so every
-// clone and every run reads the same one.
+// The CLAUDE.md read is the root file as committed at HEAD of the branch the run
+// starts on (`git show HEAD:CLAUDE.md`): the base is not known yet, and a feature
+// branch carries the line of the base it was cut from or last merged. A branch cut
+// before the line was committed holds none and takes the next source down. Not a
+// backend's CLAUDE.md, which in a vendored java-backend-template states the template's
+// trunk, and not the working tree, where an uncommitted edit is nobody's decision yet.
 //
-// Which CLAUDE.md is read: the repository root's, as committed at HEAD of the branch the
-// run starts on (`git show HEAD:CLAUDE.md`), whether that is the base branch or a feature
-// branch. The base is not known yet, so no other branch can be chosen to read it from; a
-// feature branch carries the line of the base it was cut from or last merged, and the line
-// names the trunk, which does not move with the feature. A feature branch cut before the
-// line was committed holds none, and the run takes the next source down — in the service
-// repositories the stop, whose fix is a merge of the base or `baseBranch` once; a start on
-// the base branch is not one where the spec is only on the feature branch, since preflight
-// resolves the feature directory in the tree it starts in. Not a backend's
-// CLAUDE.md: in a project that vendors java-backend-template into backend/, that file is
-// the template's and states the template's trunk. Not the working tree: an uncommitted
-// edit is nobody's decision yet.
+// The line is parsed here, not by the agent: the grep returns anything shaped like a
+// `Base branch:` line and the script reads it. A line that cannot be read in the exact
+// form, two lines naming different branches, and a line naming a branch that does not
+// exist locally each stop the run, never falling through to origin/HEAD or a trunk
+// name, because the line exists to overrule both.
 //
-// The line is parsed here, not by the agent: it greps for anything shaped like a
-// `Base branch:` line — bulleted, numbered, indented, emphasised or in another case included — and returns what
-// grep printed, verbatim. A line that is found and cannot be read in the exact form, two
-// lines naming different branches, and a line naming a branch that does not exist locally
-// are each a stop, never a fall-through to origin/HEAD or to a trunk name: the line exists
-// to overrule both, and a stale one silently overruled would take the base from the source
-// the owner wrote it to replace.
-//
-// The fallback counts develop and dev beside main and master not because either is a
-// likelier trunk but because its presence makes main ambiguous. The service repositories
-// set no origin/HEAD and hold local main and dev, and their trunk is dev; a fallback over
-// main and master alone answers main there, which is the defect this replaces — 12 of 54
-// journals on the owner's machine passed no baseBranch, and a run started on dev read dev
-// as a feature branch, merged main into it and committed there. Rejected: main as a silent
-// default (that defect), and refusing every run without baseBranch (a person step for a
-// fact git holds wherever origin/HEAD is set). The script decides from the facts the agent
-// reports, so the rule is in code and the agent runs three read-only commands.
+// develop and dev are in the fallback list because either makes main ambiguous, not
+// because either is the likelier trunk.
 // ---------------------------------------------------------------------------
 const TRUNK_NAMES = ['main', 'master', 'develop', 'dev']
 const BASE_LINE = /^Base branch: `([^`\s]+)`\s*$/
 const BASE_LINE_FORMAT = 'Base branch: `<branch>`'
 const BASE_LINE_CODE = '`` ' + BASE_LINE_FORMAT + ' ``' // a Markdown code span that can hold the backticks
-// Wider than the form on purpose: bulleted, numbered, indented, emphasised (`**Base branch:**`) and
-// any-case lines are printed too, so the parser sees them and stops rather than the grep skipping them
-// (adversarial review, 2026-09-25: the emphasised and numbered forms were skipped until then, and a
-// skipped line hands the base to origin/HEAD). Headings, quotes and table rows are not caught.
+// Wider than the form on purpose: bulleted, numbered, indented, emphasised
+// (`**Base branch:**`) and any-case lines are printed too, so the parser sees them and
+// stops rather than the grep skipping them and handing the base to origin/HEAD.
+// Headings, quotes and table rows are not caught.
 const BASE_LINE_GREP = "git show HEAD:CLAUDE.md | grep -i -E '^[[:space:]]*([-*+][[:space:]]+|[0-9]+[.)][[:space:]]+)?[*_]*base branch[*_]*[[:space:]]*[*_]*:'"
 // What the CLAUDE.md lines say: { lines } when there are none, { lines, branch } for one
 // readable name, { lines, unreadable, names } otherwise. A readable line naming HEAD is
@@ -1392,11 +1171,11 @@ const resolveBase = facts => {
   if (line.unreadable) return { branch: null, source: null, trunks, line }
   if (line.branch) return branches.includes(line.branch) ? { branch: line.branch, source: 'claude-md', trunks, line } : { branch: null, source: null, trunks, line, stale: true }
   const head = String((facts && facts.originHead) || '').trim().replace(/^refs\/remotes\//, '').replace(/^origin\//, '')
-  // origin/HEAD naming a branch with no local branch is unresolved, not a base (adversarial review,
-  // 2026-09-25): `git clone -b dev` records origin/HEAD as origin/main and makes only a local dev, and
-  // preflight merges the local base and fetches nothing, so a run started on dev would read dev as a
-  // feature branch with no base to merge — the defect this discovery replaced. Falling through to the
-  // trunk names instead would answer dev there, against what origin/HEAD says.
+  // origin/HEAD naming a branch with no local branch is unresolved, not a base:
+  // `git clone -b dev` records origin/HEAD as origin/main and makes only a local dev,
+  // and preflight merges the local base and fetches nothing, so a run on dev would read
+  // dev as a feature branch with no base to merge. Falling through to the trunk names
+  // would answer dev there, against what origin/HEAD says.
   if (head && head !== 'HEAD') return branches.includes(head) ? { branch: head, source: 'origin-HEAD', trunks, line } : { branch: null, source: null, trunks, line, originHeadNotLocal: head }
   return trunks.length === 1 ? { branch: trunks[0], source: 'fallback', trunks, line } : { branch: null, source: null, trunks, line }
 }
@@ -1493,24 +1272,16 @@ const codeList = names => names.map(n => `\`${n}\``).join(' and ')
     'Return ok=true only when there are no problems.',
   ].filter(Boolean).join('\n'), S.preflight, 'Preflight')
   state.branch = p.branch || state.branch
-  // The command preflight read out of CLAUDE.md. This line was lost in c4b9a16
-  // (2026-09-21), and from then every full preflight without args.wall stopped on "no
-  // definition-of-done command" with the command sitting in the agent's own return:
-  // six stops on six features, 2026-09-21..24, the first run of every feature since,
-  // each resolved by passing the value the agent had already found (run ledger, sweep 2).
-  // args.wall, where given, wins: every argument overrides what preflight would find.
+  // The command preflight read out of CLAUDE.md. args.wall, where given, wins: every
+  // argument overrides what preflight would find.
   state.wall = state.wall || p.wall || null
-  // The base branch is the script's, resolved before this agent ran; the agent's echo of it
-  // is not read, so a different name in its return cannot move the guard below.
+  // The base branch is the script's, resolved before this agent ran; the agent's echo of
+  // it is not read, so a different name in its return cannot move the guard below.
   // Where preflight finishes still standing on the base branch, no handoff file is
-  // written: HANDOFF.md is committed on the branch the run is on, and a commit on the trunk
-  // is not this script's to make. The report then lives on the return value, which is what
-  // every preflight exit did before there was a feature directory to write into at all.
-  // Since 2026-09-25 that happens only on a preflight exit — preflight moves every other
-  // run onto the feature branch, and the guard below stops one it did not move.
-  // The agent's two fields are held against each other: a branch named the base branch is
-  // the base branch, whatever `onBaseBranch` says, so the guard below does not rest on one
-  // boolean the agent could get wrong.
+  // written: HANDOFF.md is committed on the branch the run is on, and a commit on the
+  // trunk is not this script's to make; the report is the return value. The agent's two
+  // fields are held against each other: a branch named the base branch is the base
+  // branch, whatever `onBaseBranch` says.
   state.onBaseBranch = !!p.onBaseBranch || (!!state.baseBranch && p.branch === state.baseBranch)
   state.createdBranch = !!p.createdBranch
   // Task ids are only read where the tasks stage runs, since that stage alone would
@@ -1543,11 +1314,11 @@ const codeList = names => names.map(n => `\`${n}\``).join(' and ')
     const restart = STAGES.find(st => missing.some(f => producerOf(f) === st) || (p.specChanged && st === SPEC_EDIT_RESTART))
     const paths = missing.map(f => `${state.featureDir}/${f}`)
     const one = missing.length === 1
-    // Missing inputs are checked before a branch is made (owner's decision, 2026-09-25): a
-    // later start on the base branch that stops here leaves no branch and commits nothing,
-    // like every other pre-branch refusal. The script cannot see whether the agent stopped
-    // before `git checkout -b`; `createdBranch` is its report, and a branch it made anyway
-    // gets no handoff commit, so it holds nothing of this run and the return says so.
+    // Missing inputs are checked before a branch is made: a later start on the base
+    // branch that stops here leaves no branch and commits nothing. The script cannot see
+    // whether the agent stopped before `git checkout -b`; `createdBranch` is its report,
+    // and a branch it made anyway gets no handoff commit, so it holds nothing of this run
+    // and the return says so.
     if (state.createdBranch) {
       state.handoffRefused = `preflight made the branch \`${state.branch}\` although ${paths.join(' and ')} ${one ? 'is' : 'are'} missing, where it is told to stop before making one. The branch holds no commit of this run, and no handoff was committed on it; a restart on the base branch moves it forward, since it is an ancestor, or it can be deleted.`
     }
@@ -1555,10 +1326,10 @@ const codeList = names => names.map(n => `\`${n}\``).join(' and ')
       `this run was told to start at "${cfg.from}", and ${paths.join(' and ')} ${one ? 'is' : 'are'} missing or empty on the branch the run would work on: the run reads ${one ? 'it' : 'them'} before any stage of it writes ${one ? 'it' : 'them'}. Nothing was started${state.onBaseBranch ? `, and no branch was made — the run is still on \`${state.baseBranch}\`` : ''}. Restart with \`from: "${restart}"\`, ${missing.some(f => producerOf(f) === restart)
         ? `the first stage that writes ${missing.filter(f => producerOf(f) === restart).join(' and ')}`
         : 'because the sync also changed spec.md, and that start reads the plan already written against the new text and repairs it'}${state.onBaseBranch && !cfg.featureDir
-        // Adversarial review, 2026-09-25: on the base branch with no featureDir, step 4 answers
-        // only with the one directory holding a spec.md and no plan.md, so a
-        // close-out of a feature implemented on the trunk resolves some other, unplanned feature
-        // and stops here on its missing plan.md — with a restart that would build that one.
+        // On the base branch with no featureDir, step 4 answers only with the one
+        // directory holding a spec.md and no plan.md, so a close-out of a feature
+        // implemented on the trunk resolves some other, unplanned feature and stops here
+        // on its missing plan.md — with a restart that would build that one.
         ? `. The feature was resolved on \`${state.baseBranch}\` as the one directory under specs/ with a written spec.md and no plan.md, which is the only feature a start on the base branch finds without \`featureDir\`: if this run was for another feature — one already planned or implemented on the base branch — restart with \`featureDir\` naming it rather than with the \`from\` above`
         : ''}`,
       { missingInputs: paths, from: cfg.from, restartFrom: restart, problems: p.problems || [] }, restart)
@@ -1584,7 +1355,7 @@ const codeList = names => names.map(n => `\`${n}\``).join(' and ')
   }
   if (!state.wall) return await needsHuman('preflight', 'no definition-of-done command: pass args.wall', p.problems)
   state.questionsFileExists = !!p.questionsFile
-  // Open questions for the domain expert (2026-09-28): a start after analyze would build
+  // Open questions for the domain expert: a start after analyze would build
   // on answers the domain expert has not given. A start at analyze or earlier reads the
   // spec again and removes the file when nothing is open.
   if (state.questionsFileExists && STAGES.indexOf(cfg.from) > STAGES.indexOf('analyze')) {
@@ -1615,18 +1386,11 @@ const codeList = names => names.map(n => `\`${n}\``).join(' and ')
 // Stage: plan → review-plan ⇄ fix-plan
 // ---------------------------------------------------------------------------
 // `from: "review-plan"` runs the review over the plan already on the branch and does
-// not regenerate it. Until 2026-09-24 the review sat inside the plan stage's guard, so
-// that start ran no review at all and went straight to tasks: every review-plan stop
-// restarted at the stage its handoff named — seven, 2026-09-21..23 — reached tasks with
-// no review of what was applied after the fourth one, which is the one thing the
-// resolution rule's restart exists to prevent (run ledger, sweep 2). An `until: "plan"`
-// run now stops before the review, and `until: "review-plan"` is still the way to read
-// a reviewed plan before tasks.
-//
-// Since 2026-09-24 that start is also the restart after a spec edit, so a review that
+// not regenerate it; it is the restart after the domain expert answers. A review that
 // did not follow this run's own plan stage is told the spec may have moved since the
 // plan was written, and that a disagreement with the spec's current text is a finding
-// whose fix brings the plan into agreement in place.
+// whose fix brings the plan into agreement in place. `until: "plan"` stops before the
+// review; `until: "review-plan"` stops after it.
 if (runs('plan') || runs('review-plan')) {
   phase('Plan')
   const P = featurePaths(state.featureDir)
@@ -1700,26 +1464,22 @@ if (runs('plan') || runs('review-plan')) {
 // The rules every task this stage writes follows, in generate and update mode alike.
 const TASK_RULES = P => `Rules: every task names the file it touches; every phase ends with a task that runs the definition of done, \`${state.wall}\`, and fixes until it is green; the phases follow the template ("## Phase N: ..."). Every FR and SC of ${P.spec} is named by at least one task in this file — the gate refuses an id no task names — in qualified form \`${featureNum(state.featureDir)}/FR-nnn\` or \`${featureNum(state.featureDir)}/SC-nnn\`, and that task writes a test citing it — or, it is named by a task that adds its row to specs/trace-waivers.tsv (\`${featureNum(state.featureDir)}/ID<TAB>kind<TAB>reason\`, rows sorted), where kind is exactly \`external\` (the criterion cannot be witnessed from inside this repository at all — a production latency figure, an operator procedure) or \`deferred\` (specified but deliberately not built in this feature; the reason names where that deferral is recorded — a plan.md scope boundary, a GATES.md named-gap row, the owning capability). A requirement that is merely untested is neither: it gets a test, not a waiver row. This tasks stage is the only place a waiver task may originate: no later stage adds one. A task that dictates Javadoc or comment wording also uses the qualified form, never the bare id. Run the before_tasks and after_tasks hooks.`
 
-// The tasks stage has two modes, and preflight decides which (2026-09-25). On a first run
-// tasks.md does not exist, or ticks nothing, and the stage generates it with
-// /speckit-tasks exactly as before. Where preflight found ticked tasks in it — a restart at
-// review-plan after a spec edit on a feature already implemented or converged, the restart
-// a converge-stage question names — the stage updates the file in place instead (owner's
-// decision, 2026-09-25): ticked tasks stay ticked, forced convergence phases included; a
-// ticked task whose requirement the change altered is unticked with the reason in its line;
-// a task the revised spec and plan no longer need is marked removed (REMOVED_TASK), never
-// deleted; new work gets new tasks with ids after the maximum. Implement then runs only
-// what is open, as it always did. The rejected default is the regeneration this stage did
-// until that day: /speckit-tasks writes tasks.md whole, every task unticked, so implement
-// ran every phase again over code that exists and the forced convergence phases left the
-// file.
+// The tasks stage has two modes, and preflight decides which. On a first run tasks.md
+// does not exist, or ticks nothing, and the stage generates it with /speckit-tasks.
+// Where preflight found ticked tasks — a restart at review-plan on a feature already
+// implemented — the stage updates the file in place instead: ticked tasks stay ticked,
+// forced convergence phases included; a ticked task whose requirement the change
+// altered is unticked with the reason in its line; a task the revised spec and plan no
+// longer need is marked removed (REMOVED_TASK), never deleted; new work gets new tasks
+// with ids after the maximum. Implement then runs only what is open. Regenerating
+// instead would untick every task, so implement would redo every phase over code that
+// exists.
 //
-// The update is certified by a parse-only reader, on the `phases` row's precedent: the
-// agent that edited the file is not the one that says what it holds. Every task preflight
-// saw ticked must come back ticked, reopened with a reason, or removed with a reason; one
-// unticked without a reason, or gone, stops the run, because implement would then redo it
-// on nobody's decision — or never know it had been done. Every task preflight saw open must
-// come back open or removed with a reason; one gone or ticked stops the run too.
+// The update is certified by a parse-only reader: the agent that edited the file is not
+// the one that says what it holds. Every task preflight saw ticked must come back
+// ticked, reopened with a reason, or removed with a reason; one unticked without a
+// reason, or gone, stops the run. Every task preflight saw open must come back open or
+// removed with a reason; one gone or ticked stops the run too.
 if (runs('tasks')) {
   phase('Tasks')
   state.stagesRun.push('tasks')
@@ -1759,13 +1519,12 @@ if (runs('tasks')) {
       `Commit ${P.tasks} with the message "tasks: update in place after a spec or plan revision". Return done=true, the commit sha, and every task you reopened, removed or added — reopened and removed each with the reason its line carries.`,
     ].filter(Boolean).join('\n'), S.tasksUpdated, 'Tasks')
   // NO_TASK_WAITS_ON_A_PERSON sends a question only the domain expert can answer to
-  // `specChanges`. Until 2026-09-24 nothing here read it, so the question left the run
-  // with no trace; until 2026-09-28 it stopped the run here. It is now collected, and the
-  // run stops after analyze with every question asked at once.
+  // `specChanges`; it is collected, and the run stops after analyze with every question
+  // asked at once.
   addQuestions('tasks', specChangesOf(generated))
-  // The open tasks are certified too (adversarial review, 2026-09-25): the update may not
-  // delete one — a later append would reuse its id and its requirement would go unplanned
-  // — and may not tick one, which claims work nobody did and which implement then skips.
+  // The open tasks are certified too: the update may not delete one — a later append
+  // would reuse its id and its requirement would go unplanned — and may not tick one,
+  // which claims work nobody did and which implement then skips.
   if (update) {
     const openBefore = state.openTasks
     const cert = await run('phases', 'check tasks.md after update', [
@@ -1821,22 +1580,20 @@ if (runs('tasks')) {
   }
 }
 
-// The analyze loop has the review loop's stop rule (2026-09-24): a survivor stops the
-// run, the cap does not. After maxAnalyzeRounds remediations the analysis after the last
-// one is remediated too, and one final analysis reads the result; its only stop is a
-// CRITICAL or HIGH finding restating one a remediation was handed, and its other
-// findings go on to implement open, reported as `analysis.ended: "round-cap"`. The
-// converge loop later reads the code against the spec, which is where a finding the
-// final analysis left open is met again if it is real.
+// The analyze loop has the review loop's stop rule: a survivor stops the run, the cap
+// does not. After maxAnalyzeRounds remediations the analysis after the last one is
+// remediated too, and one final analysis reads the result; its only stop is a CRITICAL
+// or HIGH finding restating one a remediation was handed, and its other findings go on
+// to implement open, reported as `analysis.ended: "round-cap"`. Converge later reads
+// the code against the spec, where a finding the final analysis left open is met again
+// if it is real.
 //
 // The first analysis is also handed the plan review's open blocking and major findings
-// when that loop ended at its cap. Without it they reached nothing but the return value
-// of a run that goes on to implement: /speckit-analyze checks the artifacts against each
+// when that loop ended at its cap: /speckit-analyze checks the artifacts against each
 // other and the constitution, and a design defect such as a lock protocol that can
 // deadlock is not a question it asks. A blocking one is graded no lower than HIGH so it
-// is remediated, since the plan review's own scale already said the plan cannot stand
-// with it. Nothing here stops the run on them: the survivor test does, one round later,
-// if the remediation does not take.
+// is remediated. Nothing here stops the run on them: the survivor test does, one round
+// later, if the remediation does not take.
 const analyzeCarry = () => {
   const open = state.reviewPlan && state.reviewPlan.ended === 'round-cap'
     ? state.reviewPlan.findings.filter(f => f.severity !== 'minor')
@@ -1905,10 +1662,10 @@ if (runs('analyze')) {
   state.analysis = { ended, rounds: state.rounds.analyze, findings: analysis ? analysis.findings : [] }
 }
 
-// The questions stop (owner's decision, 2026-09-28). Every question review-plan, tasks
-// and analyze raised goes to the domain expert at once, after the planning has run on
-// the recommended answers. A run that stopped earlier on something else has already
-// written them, since writeHandoff writes QUESTIONS.md whenever any are held.
+// The questions stop. Every question review-plan, tasks and analyze raised goes to the
+// domain expert at once, after the planning has run on the recommended answers. A run
+// that stopped earlier on something else has already written them, since writeHandoff
+// writes QUESTIONS.md whenever any are held.
 if (state.questions.length) {
   return await needsHuman(state.stagesRun[state.stagesRun.length - 1] || cfg.until,
     `${state.questions.length} question(s) can only be answered by a change to ${state.featureDir}/spec.md, which no stage of this run edits. They are in ${QUESTIONS_FILE}, each with a recommended answer, for the domain expert to answer with /speckit-clarify on \`${state.baseBranch}\`; the plan and tasks were written on the recommended answers. Once the answers are pushed, rerun plan-feature with \`from: "${SPEC_EDIT_RESTART}"\`, which merges them in, reads the plan against the answered spec and repairs it in place`,
@@ -1935,19 +1692,18 @@ if (state.questionsFileExists && runs('analyze')) {
 // Stage: implement, one agent per phase
 // ---------------------------------------------------------------------------
 // NO GATE IS EVER WEAKENED TO MAKE A WALL GREEN. The prohibition is in the ordinary
-// prompt and enumerated in the repair prompt below, because the repair pass is where
-// the temptation lives: an agent told to turn a red wall green, with no task list
-// left to do it through, can always delete the test instead. A green wall bought that
-// way is strictly worse than the needs-human exit it replaced, so the repair prompt
-// names every move it may not make and tells the agent to return wallGreen=false and
-// leave the tree alone when the only route it can see is one of them.
-// A forced convergence task is closed by the fix (owner's rule, 2026-09-20: a severity
-// floor of NONE means a LOW finding is fixed). The three blockers admitted are the ones
-// an agent cannot work past from inside the feature — the third being a fix that would
-// have to edit spec.md, which is the feature author's (2026-09-21); everything else claimed on
-// product-catalog 004 — "this toolchain cannot express it", "a deployment decision",
-// "the artifacts already name it as a gap", "the file is append-only" — was fixed by
-// hand the same day, so none of those is a blocker and the prompt says so by name.
+// prompt and enumerated in the repair prompt below: an agent told to turn a red wall
+// green, with no task list left to do it through, can always delete the test instead.
+// A green wall bought that way is worse than the needs-human exit it replaces, so the
+// repair prompt names every move it may not make and tells the agent to return
+// wallGreen=false and leave the tree alone when the only route it can see is one of
+// them.
+// A forced convergence task is closed by the fix: under a floor of NONE a LOW finding
+// is fixed. The three blockers admitted are the ones an agent cannot work past from
+// inside the feature, the third being a fix that would have to edit spec.md. "This
+// toolchain cannot express it", "a deployment decision", "the artifacts already name it
+// as a gap" and "the file is append-only" are not blockers, and the prompt says so by
+// name.
 const FORCED_RULE = [
   '- FORCED CONVERGENCE PHASE. Every task in this phase is a finding the loop will not tolerate, and each is closed by the change that makes the finding untrue — code, a test, a migration, a gate, a document edit. It is never closed by writing down why it was not fixed: do not add a rationale entry anywhere, do not tick a task on the strength of one, and do not tick a task because an earlier rationale, a named gap in plan.md or a row in a gates document already describes the finding. Those describe the gap; the task is to close it.',
   '- A fix is blocked in exactly three cases: (a) a numbered requirement in spec.md or an article of the constitution forbids the change — quote it with its id; (b) the change needs a system outside this repository that does not exist; (c) the only fix is an edit to spec.md, which no stage of this run makes — name the requirement and the change the spec needs, and it goes to the spec\'s author. Nothing else is a blocker. "The toolchain cannot express this check", "this is a deployment decision", "the plan already names this as a gap", "no feature has proposed it yet" and "the file is append-only" are not blockers: find another shape for the check, make the decision and wire it, close the named gap, edit the file. A finding you believe is simply wrong is not ticked either: it stays unchecked and the reason goes in `blocked`.',
@@ -1987,21 +1743,17 @@ const implementPhase = async (ph, phaseLabel, repair, forced) => {
   return r
 }
 
-// One phase run to a green wall and a fully ticked task list, with the two bounded
-// retries the loop is allowed and no third. Both exist because the alternative was a
-// needs-human exit on work the loop had the agents to finish (owner's rule,
-// 2026-09-18: a run must not hand back what it could have fixed itself).
+// One phase run to a green wall and a fully ticked task list, with two bounded
+// retries and no third, because a run must not hand back what it could have fixed.
 //   - A red wall gets ONE fresh-context repair pass carrying the failing output. The
-//     first agent had already run the wall maxWallAttempts times inside its own
-//     context, so a second attempt by that context is not what is missing; a second
-//     context reading the same failure is, and that is this skill's own premise for
-//     every review gate. Nothing in the pass may weaken a gate — see implementPhase.
-//   - Tasks left unchecked get ONE second pass over exactly those ids: the shape the
-//     implement stage already ran, which the convergence phases did not have.
+//     first agent already ran the wall maxWallAttempts times in its own context; what
+//     is missing is a second context reading the same failure. Nothing in the pass may
+//     weaken a gate — see implementPhase.
+//   - Tasks left unchecked get ONE second pass over exactly those ids.
 // Ceiling: three implement agents per phase, no recursion, no retry of a retry. The
-// loop escalates rather than inventing a fourth shape, and the `why` it returns says
-// what was attempted and how often, so a person reading HANDOFF.md can tell "nobody
-// tried" from "tried three ways". `what` names the phase for those messages.
+// `why` it returns says what was attempted and how often, so a person reading
+// HANDOFF.md can tell "nobody tried" from "tried three ways". `what` names the phase
+// for those messages.
 const runPhaseToDone = async (ph, phaseLabel, what, forced) => {
   let r = await implementPhase(ph, phaseLabel, null, forced)
   if (!r.wallGreen) {
@@ -2047,12 +1799,10 @@ const readPhases = async (label, group) => {
 }
 
 // The phase an append just wrote is found by its number or not at all. The reader is a
-// parse-only agent on the cheapest tier, and on 2026-09-20 it returned 13 phases of a
-// 31-phase tasks.md; the fallback then in place — the last phase the reader returned —
-// sent implement at phase 13, already complete, which came back green, and the forced
-// phase's thirteen tasks stayed unchecked through four further rounds that each reported
-// them. So: one re-read that names the miss, then a person. A wrong phase implemented
-// green is worse than a stop. Where the append gave no number, the last phase stands in
+// parse-only agent on the cheapest tier and can stop short on a long tasks.md; falling
+// back to the last phase it returned can send implement at a phase already complete,
+// which comes back green while the appended tasks stay open. So: one re-read that names
+// the miss, then a person. Where the append gave no number, the last phase stands in
 // only while it holds unchecked tasks, which a phase just appended always does.
 const readAppendedPhase = async (number, label, group) => {
   const numbered = Number.isInteger(number)
@@ -2092,14 +1842,10 @@ if (runs('implement')) {
 if (runs('converge')) {
   phase('Converge')
   state.stagesRun.push('converge')
-  // Converge has no fixed point: on the hand-driven 001-product-hierarchy run
-  // (2026-09-18) it took five passes, and the fifth appended nothing only because
-  // the operator stopped applying findings below the floor. So the severity floor
-  // is the loop's only stop test, and reaching the cap is reported, not escalated.
-  // The default floor is NONE (owner's decision 2026-09-18, reversing the LOW
-  // default taken earlier the same day on that run's evidence): a tolerated finding
-  // is a finding left open, so the loop tolerates none and the cap is what ends a
-  // long run.
+  // Converge has no fixed point: each pass can find what the previous implement did
+  // not. So the severity floor is the loop's only stop test, and reaching the cap is
+  // reported, not escalated. The default floor is NONE: a tolerated finding is a
+  // finding left open, so the loop tolerates none and the cap ends a long run.
   const SEVERITY_FLOOR = cfg.severityFloor
   // NONE ranks below every graded severity, so every graded finding is above it.
   const floorRank = SEVERITY_FLOOR === 'NONE' ? SEVERITY_ORDER.length : SEVERITY_ORDER.indexOf(SEVERITY_FLOOR)
@@ -2119,16 +1865,13 @@ if (runs('converge')) {
   const gradeOf = findings => SEVERITY_ORDER.map(sev => `${findings.filter(f => f.severity === sev).length} ${sev.toLowerCase()}`).join(', ')
   // The floor is never in the prompt: the assessment grades on Step 5's scale alone
   // and the script filters afterwards, so moving args.severityFloor cannot move a
-  // grade. One prompt for both kinds of round. assessOnly is the extra round after the cap:
-  // same assessment, no append, no commit, so its findings are open work rather than
-  // work the round that found it has already closed.
-  // A deferral the owner wrote into the spec wins over forcing (owner's decision,
-  // 2026-09-24). On wf_e4af9888-80a the loop forced and built 003/FR-034, which the
-  // owner's post-plan clarification in spec.md had deferred to a later feature. Narrow by
-  // construction: only spec.md text counts, quoted in `deferredBy`, because every other
-  // artifact that could record a deferral — plan.md, tasks.md, research.md, GATES.md, a
-  // waiver row — was written by this run or an earlier one from the spec, and the run's
-  // own output is never the ground for not doing work (the resolution rule's test). A
+  // grade. One prompt for both kinds of round. assessOnly is the extra round after the
+  // cap: same assessment, no append, no commit, so its findings are open work rather
+  // than work the round that found it has already closed.
+  // A deferral written into spec.md wins over forcing. Only spec.md text counts, quoted
+  // in `deferredBy`, because every other artifact that could record a deferral —
+  // plan.md, tasks.md, research.md, GATES.md, a waiver row — was written by a run from
+  // the spec, and the run's own output is never the ground for not doing work. A
   // deferred finding — one whose quotation checkDeferrals found in spec.md — is not
   // forced, not counted against the floor, never a survivor, and is reported under
   // converge.deferred.
@@ -2151,30 +1894,20 @@ if (runs('converge')) {
   ].filter(Boolean).join('\n')
 
   // -------------------------------------------------------------------------
-  // The forced convergence round (2026-09-18).
+  // The forced convergence round.
   //
   // /speckit-converge Step 7 appends tasks only for the findings it judges
   // *actionable*, and Step 4 surfaces `unrequested` gaps for awareness alone, so a
-  // "converged" return routinely carries graded findings that nothing in the
-  // repository closes. Until today the loop escalated that to a person, and the
-  // comment beside the escalation admitted the trap: the floor exists precisely to
-  // refuse converge's non-actionability judgment, and under the NONE default the
-  // branch fired on any finding at all. Observed on feature specs/002-product: the
-  // run stopped on four LOW findings — FR traceability citations, one GATES.md table
-  // row described too thinly, two test and naming wordings — and every one of them
-  // was a mechanical edit the loop had the agents to make.
-  //
-  // So the loop gets the move it was missing. A floor that declines converge's
-  // judgment must supply the work that judgment withheld: the script appends those
-  // findings itself, one task per finding, and implements the phase through the same
-  // implementPhase the appended rounds use, with the same wall gate.
+  // "converged" return can carry graded findings that nothing in the repository
+  // closes. The floor exists to refuse that non-actionability judgment, so it must
+  // supply the work the judgment withheld: the script appends those findings itself,
+  // one task per finding, and implements the phase through the same implementPhase
+  // the appended rounds use, with the same wall gate.
   //
   // Round accounting: a forced round is done inside the slot of the round that
   // discovered it, and the loop then continues to its next round, exactly as a
   // `tasks_appended` round does. So maxConvergeRounds stays the single bound on the
-  // stage — at most that many converge agents and at most that many
-  // append-and-implement cycles, forced or not — and no pathological run can spin.
-  // The extra cost of a forced round over an appended one is one forceAppend agent.
+  // stage, forced rounds included.
   // -------------------------------------------------------------------------
   const P = featurePaths(state.featureDir)
   // The reason every converge-stage `specChanges` exit gives — the assessment's and the
@@ -2258,12 +1991,10 @@ if (runs('converge')) {
       }
     }
   }
-  // Exact match alone never fired: on product-catalog 004 (2026-09-20) the same
-  // thirteen findings came back six rounds running, re-worded each time, and were
-  // forced six times. So the assessment is also handed the numbered list of what this
-  // run already forced and labels each finding it returns with the entry it restates
-  // (repeatOf). The label is asked for after the assessment and changes nothing about
-  // what is assessed or graded; it is the only reader placed to say "same gap".
+  // Exact match alone misses a finding re-worded by the next round, so the assessment
+  // is also handed the numbered list of what this run already forced and labels each
+  // finding it returns with the entry it restates (repeatOf). The label is asked for
+  // after the assessment and changes nothing about what is assessed or graded.
   const forcedRoundOf = f => forcedIds[findingId(f)] ||
     (Number.isInteger(f.repeatOf) && f.repeatOf > 0 && forcedList[f.repeatOf - 1] ? forcedList[f.repeatOf - 1].round : 0)
   const survivorsOf = findings => findings.filter(f => forcedRoundOf(f))
@@ -2286,10 +2017,10 @@ if (runs('converge')) {
   // separate things key off it: the append writes it, the reconcile looks for it, and
   // the parse-only reader certifies the verdict by finding it or not finding it.
   const forcedTitle = round => `Convergence (forced round ${round})`
-  // The round number is matched whole, so round 1 is not found in "forced round 12", and a
-  // phase with no open task is left out: since 2026-09-25 an earlier run's forced phases stay
-  // in tasks.md, ticked, across a restart at review-plan as across one at converge, and one
-  // titled for the same round would otherwise read as this round's phase.
+  // The round number is matched whole, so round 1 is not found in "forced round 12", and
+  // a phase with no open task is left out: an earlier run's forced phases stay in
+  // tasks.md, ticked, across a restart, and one titled for the same round would
+  // otherwise read as this round's phase.
   const holdsForcedPhase = (phases, round) => phases.filter(p => {
     const m = /forced round (\d+)/i.exec(String(p.title || ''))
     return m && Number(m[1]) === round && p.unchecked > 0
@@ -2320,15 +2051,11 @@ if (runs('converge')) {
     `Return appended=true only when the phase header and one task per finding are in ${P.tasks} on disk and committed, with the phase number and every task id paired with the location of the finding it was written from. If any step fails, return appended=false with the reason in note; never return appended=true for a partial append.`,
   ].join('\n')
 
-  // Reconcile, 2026-09-19. A forced append that reports it failed used to end the run:
-  // the reasoning was that the agent may have written part of the phase first, so a
-  // blind retry would duplicate it. That is an argument against a *blind* retry and
-  // not against a retry — and "somebody needs to look at tasks.md" is not a human-only
-  // act, which is the owner's rule (2026-09-18) applied to the one site that had
-  // survived it. Git is the oracle: at this instant nothing else in the run has
-  // touched tasks.md since the last round's implement committed, so an uncommitted
-  // change to it is the failed agent's own partial write and `git checkout` restores
-  // the known-absent state exactly, with nothing judged by eye.
+  // Reconcile. A forced append that reports it failed may have written part of the
+  // phase first, so a blind retry could duplicate it. Git decides instead: at this
+  // instant nothing else in the run has touched tasks.md since the last round's
+  // implement committed, so an uncommitted change to it is the failed agent's own
+  // partial write, and `git checkout` restores the known-absent state exactly.
   const reconcilePrompt = (round, fs, fa) => [
     UNATTENDED,
     `The feature is ${state.featureDir}; its tasks file is ${P.tasks}.`,
@@ -2584,17 +2311,12 @@ if (runs('finish')) {
   ].join('\n')
   finished = await run('finish', 'finish', finishPrompt, S.finished, 'Finish')
   log(`finish: wall ${finished.wallGreen ? 'green' : 'RED'}, ${finished.pushed ? 'pushed' : 'not pushed'}${finished.merged ? `, merged into ${cfg.mergeInto}` : ''}`)
-  // A red wall at finish is not a question for a person either: the loop turned this
-  // same wall green after every implemented phase, with the same agents, and a wall
-  // that was green at the last phase and is red here is a defect in the feature and
-  // not a decision (owner's rule, 2026-09-18). So it gets ONE bounded repair pass —
-  // and the re-check is a second finish agent rather than the repairing agent's own
-  // word, because an agent that repairs a gate is not the one that may declare it
-  // green. That separation is the whole safety of this path: the repair prompt
-  // enumerates the moves that are forbidden, and the verdict still comes from an
-  // agent that only runs the wall and reports. Exactly one repair and one re-verify;
-  // a still-red wall after them is the needs-human exit below, which now says the
-  // loop tried.
+  // A red wall at finish is not a question for a person either: the same wall was
+  // green after every implemented phase, so a red one here is a defect in the feature,
+  // not a decision. It gets ONE bounded repair pass, and the re-check is a second
+  // finish agent rather than the repairing agent's own word, because an agent that
+  // repairs a gate is not the one that may declare it green. Exactly one repair and one
+  // re-verify; a still-red wall after them is the needs-human exit below.
   if (!finished.wallGreen) {
     log('finish: the wall is RED — one fresh-context repair pass, then a second finish agent re-runs the wall to verify')
     const repair = await run('implement', 'finish wall repair', [

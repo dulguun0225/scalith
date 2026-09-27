@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 // What the skills did on real work — a reader over the Workflow run journals
-// that `plan-feature` and `build-feature` leave behind (`converge-feature` until
-// 2026-09-28).
+// that `plan-feature` and `build-feature` leave behind.
 //
 // Why it exists. Every other measurement in this repo is synthetic: `npm run
 // firing` runs headless sessions against fixtures, `npm run probes` runs them
@@ -18,10 +17,8 @@
 // Where the journals are, and that they are ephemeral. Claude Code writes them
 // to `~/.claude/projects/<consumer repo path with "/" replaced by "-">/
 // <sessionId>/workflows/wf_*.json`. They are machine-local, they are not in any
-// repository, and a cleared projects directory erases them. **This script's
-// output pasted into `docs/history/runs.md` is the durable record** — the same
-// arrangement `npm run firing` has, where the sessions are thrown away and the
-// rates are written down. Nothing here commits a journal or a copy of one.
+// repository, and a cleared projects directory erases them. Nothing here
+// commits a journal or a copy of one.
 //
 // A report, not a gate, and it can never become one. Every number below is a
 // property of runs that happened on one machine, in consumer repositories this
@@ -34,15 +31,12 @@
 // branch commits `<featureDir>/HANDOFF.md` in the service repo; the per-stop
 // block finds that commit, reports its size and the command that reads it in
 // full, and lists the commits between it and the next run on the feature — what
-// was changed before the restart, which no journal records. Owner's decision,
-// 2026-09-24: harvest step d decides a prevention target for every stop, not
-// only for recurring groups, and this block is its input. Its git calls are
+// was changed before the restart, which no journal records. Its git calls are
 // read-only.
 //
 // It computes groups and never names a rule. A finding that recurs across
 // features is printed as a candidate; whether it becomes a directive, a
-// constitution article, a template gate or nothing is the harvest's judgment,
-// and the procedure for that is in `docs/history/runs.md`.
+// constitution article, a template gate or nothing is a person's judgment.
 //
 // Exits 0 on a clean read. Exits 1 when a journal could not be parsed or an
 // agent label could not be read, because then every table below it is short by
@@ -124,7 +118,7 @@ const unparsedLabels = [];
 // A label is `<stage> (<model> <effort>)` followed by zero or more trailing
 // parenthesised annotations — ` (retry N)` from the stall retry, and free text
 // such as ` (after usage limit)` on an agent relaunched by hand after a usage
-// stop (first seen 2026-09-22, wf_9e8bb81f-135). The stage part may itself hold
+// stop. The stage part may itself hold
 // parentheses — `preflight (discovery and sync)`, `converge 3 (assess only)` —
 // so the tier is the last `(<model> <effort>)` group and everything after it
 // must be annotation groups. Model and effort are not fields on the journal
@@ -301,8 +295,7 @@ const runs = allRuns.filter((r) => inWindow(r) && (!onlyRun || r.runId.includes(
 // A second source beside the journals. Every needs-human exit with a resolved
 // feature directory, off the base branch, commits `<featureDir>/HANDOFF.md` with
 // the subject below, rendering the return value's findings item by item. Its
-// content is the journal's `result.detail`, not more (checked 2026-09-24 on
-// wf_e5ab8e1a-c53: twelve items in both), but it is committed, so it survives a
+// content is the journal's `result.detail`, not more, but it is committed, so it survives a
 // cleared projects directory and is readable on any clone. The commits on the
 // branch between that commit and the next run's start are what somebody changed
 // before restarting — the one thing no journal records.
@@ -400,7 +393,7 @@ function findHandoff(r, path) {
   if (rec && rec.written === false) return { none: `handoff not written: ${String(rec.note || "no reason given").slice(0, 160)}` };
   const base = r.baseBranch || repoCheck(r.repoPath).originHead;
   if (base && r.branch === base) return { none: `on base branch \`${base}\`; no handoff commit found` };
-  return { none: rec ? "the journal records a handoff with no sha and git holds no matching commit" : "the journal holds no handoff record (none was written before 2026-09-18) and git holds no matching commit" };
+  return { none: rec ? "the journal records a handoff with no sha and git holds no matching commit" : "the journal holds no handoff record (older runs wrote none) and git holds no matching commit" };
 }
 
 /** The ref the resolution window is read on: the feature branch if it holds the handoff, else any ref that does. */
@@ -547,7 +540,7 @@ function textReport() {
     console.log(
       `\nNo run journals found.\n\nLooked in:\n${repos.map((r) => `  ${projectDir(r)}`).join("\n")}\n\n` +
         `The journals are machine-local and ephemeral — a cleared ~/.claude/projects\n` +
-        `erases them. The durable record is docs/history/runs.md.\n`,
+        `erases them.\n`,
     );
     return 0;
   }
@@ -810,16 +803,15 @@ function textReport() {
     the only per-directive coverage record, and it is a different reader
   - whether the produced code obeys a directive. That is the consumer repo's
     wall, which was green on the runs it ran on; this reports what the loop did
-  - whether a recurrence group should become a rule. It prints candidates; the
-    harvest procedure in docs/history/runs.md decides, and a CROSS-FEATURE group
-    is a candidate and not a verdict
+  - whether a recurrence group should become a rule. It prints candidates; a
+    CROSS-FEATURE group is a candidate and not a verdict
   - near-duplicate findings. Grouping is an exact match after normalising, and
     \`build-feature\` records that exact match alone never fired on re-typed
     wording — which is why its own loop asks the assessment for \`repeatOf\`
   - which skill invoked the run. Every journal names build-feature's script;
-    since 2026-09-28 plan-feature passes \`until: "analyze"\` and build-feature
-    \`from: "implement"\`, and a run of the removed converge-feature before that
-    is indistinguishable from build-feature with \`from: "converge"\`
+    plan-feature passes \`until: "analyze"\` and build-feature
+    \`from: "implement"\`, and an older run with \`from: "converge"\` may have
+    been started by the removed converge-feature
   - wall attempts inside an implement agent, or a second implement pass over
     unchecked ids. Neither has a label or a log line; only the phase-level wall
     outcome is recorded
@@ -837,9 +829,8 @@ function textReport() {
     unrelated work
   - a decision made in conversation and never committed. Git holds only what
     was committed; the journal holds only what the run returned
-  - the prevention target of a stop. The per-stop record is the input to harvest
-    step d in docs/history/runs.md; which earlier stage should have caught the
-    stop is that step's judgment
+  - the prevention target of a stop: which earlier stage should have caught it
+    is a person's judgment
   - whether any of this generalises. One machine, one operator, no control arm;
     a number here is comparable only to another taken the same way
 `);

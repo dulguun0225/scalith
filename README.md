@@ -5,10 +5,10 @@ Agent Skills and installed with Vercel's `skills` CLI; the plan is a local
 software factory, then a server-hosted one. spec-kit is the current method and
 may be replaced.
 
-These skills moved here on 2026-09-27 from
-[`dulguun0225/skills`](https://github.com/dulguun0225/skills) at `2ab5dc4`; their
-git history before that date is there. The engineering-decision skills they load
-alongside (`java-backend-rules`, `money`, `primary-keys` and the rest) stay there.
+The engineering-decision skills these load alongside (`java-backend-rules`,
+`money`, `primary-keys` and the rest) are in
+[`dulguun0225/skills`](https://github.com/dulguun0225/skills). Every skill here is
+manual-only: invoke it by name.
 
 ## What is published
 
@@ -32,11 +32,11 @@ npm run gates
 | Command | What it does |
 | ------- | ------------ |
 | `npm run check` | Lists the skills the CLI discovers here. Anything it does not list is invisible to every consumer. |
-| `npm run gates` | Evidence order, dangling pointers and the description budget, the same three gates `dulguun0225/skills` runs. Fails the build. |
-| `npm run runs` | Reads the Workflow run journals that `plan-feature` and `build-feature` leave behind in real service repositories, and prints one record per run (stage exit, rounds per loop, which mechanisms fired, tokens with coverage, wall-clock), a stage × tier cost table, the findings and exit reasons that recur across runs and across features, and one record per `needs-human` stop read from the service repository's git history — the `HANDOFF.md` commit and the commits between it and the next run on the feature, all git calls read-only (`--repo <abs path>` repeatable, `--since <date>`, `--until <date>` inclusive, `--run <id>`, `--json`). **The only non-synthetic measurement here** — everything above it runs against fixtures or counts text. A report, never a gate: the numbers belong to runs on one machine in repositories this one does not control. The journals are machine-local under `~/.claude/projects/` and are erased with that directory, so the sweep written into `docs/history/runs.md` is the durable record; no journal is committed. |
+| `npm run gates` | Dangling pointers and the description budget. Fails the build. |
+| `npm run runs` | Reads the Workflow run journals that `plan-feature` and `build-feature` leave behind in real service repositories, and prints one record per run (stage exit, rounds per loop, which mechanisms fired, tokens with coverage, wall-clock), a stage × tier cost table, the findings and exit reasons that recur across runs and across features, and one record per `needs-human` stop read from the service repository's git history — the `HANDOFF.md` commit and the commits between it and the next run on the feature, all git calls read-only (`--repo <abs path>` repeatable, `--since <date>`, `--until <date>` inclusive, `--run <id>`, `--json`). **The only non-synthetic measurement here** — everything above it runs against fixtures or counts text. A report, never a gate: the numbers belong to runs on one machine in repositories this one does not control. The journals are machine-local under `~/.claude/projects/` and are erased with that directory; no journal is committed. |
 | `npm run try -- <name>` | Runs one skill straight from the working tree, without installing it. |
 
-Flags go after `--` (`npm run runs -- --since 2026-09-22`); without it npm
+Flags go after `--` (`npm run runs -- --since <date>`); without it npm
 swallows them.
 
 ## Installing from this repo
@@ -48,7 +48,7 @@ npx skills add dulguun0225/skills -a claude-code -y    # the engineering-decisio
 
 ## Starting a new Java project
 
-The order is fixed, decided 2026-09-16, and the skill comes before spec-kit:
+The order is fixed, and the skill comes before spec-kit:
 
 1. In an empty project directory, invoke `/new-java-backend`. It asks for the
    package, artifact name and group, lands the template in `backend/` at its
@@ -60,7 +60,7 @@ The order is fixed, decided 2026-09-16, and the skill comes before spec-kit:
    empty, nothing reads whether it is filled, and it is amended later, as a
    commit with its reason, from the candidates a feature's plan produces.
    `/speckit.constitution` is not a step of starting a project.
-3. Three loops (decided 2026-09-28), each over stock spec-kit commands:
+3. Three loops, each over stock spec-kit commands:
    - The domain expert, on the base branch: `/speckit.specify`, then
      `/speckit.clarify` until it finds nothing to ask.
    - The technical expert: `/plan-feature` (plan, plan review, tasks, analyze).
