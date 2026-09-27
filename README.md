@@ -15,8 +15,8 @@ manual-only: invoke it by name.
 | Skill | For an agent about to… |
 | ----- | ---------------------- |
 | `new-java-backend` | create a Java backend project from nothing — one pinned script lands `dulguun0225/java-backend-template` with every gate wired, then `specify init`, and it stops there: no spec-kit command is part of it or handed on as a next step. Nothing in it is a decision; invoke it by name |
-| `plan-feature` | plan one feature from a spec its domain expert clarified, with no human gate — `build-feature`'s script from preflight to analyze: plan, a fresh-context plan review, tasks and analyze. Every finding only the spec can settle becomes a question for the domain expert with a recommended answer; the run collects them, works on the recommended answers, and after analyze commits `QUESTIONS.md` on the feature branch with one line for the domain expert to run on the base branch — stock `/speckit-clarify`, which asks them five at a time and writes the answers into the spec. Rerun from `review-plan` after they answer, until a run ends with no question; install it **with** `build-feature`; invoke it by name |
-| `build-feature` | implement and converge one feature that `plan-feature` left with no question open, with no human gate — the same script from `implement`: one agent per task phase with the definition of done green after each, then converge ⇄ implement until nothing converge finds is above the severity floor, `args.severityFloor`, `NONE` by default — tolerating nothing, so a long run ends at its round cap with the open findings reported. It refuses while `QUESTIONS.md` is on the branch. Where a run stops, the invoking session resolves what it holds a high-confidence recommendation for and restarts; a change to the spec is never the session's, and goes to the domain expert as a question. The file is also the reference for the whole script; invoke it by name |
+| `plan-feature` | plan one feature from a spec its domain expert clarified, with no human gate — `build-feature`'s script from preflight to analyze: plan, a fresh-context plan review, tasks and analyze. Every finding only the spec can settle becomes a question for the domain expert with a recommended answer; the run collects them, works on the recommended answers, and after analyze commits `QUESTIONS.md` on the feature branch with one line for the domain expert to run on the base branch — stock `/speckit-clarify`, which asks them five at a time and writes the answers into the spec. The build waits for every question until the spec answers it or, for a `MEDIUM` or `LOW` one, a person says the build may start on the recommended answer. Rerun from `review-plan` after they answer, until no question is open; install it **with** `build-feature`; invoke it by name |
+| `build-feature` | implement and converge one feature that `plan-feature` left with no open question, with no human gate — the same script from `implement`: one agent per task phase with the definition of done green after each, then converge ⇄ implement until nothing converge finds is above the severity floor, `args.severityFloor`, `NONE` by default — tolerating nothing, so a long run ends at its round cap with the open findings reported. It asks the domain expert nothing, and refuses while `QUESTIONS.md` holds an open question. Where a run stops, the invoking session resolves what it holds a high-confidence recommendation for and restarts; a change to the spec is never the session's, and goes to the domain expert as a question. The file is also the reference for the whole script; invoke it by name |
 
 ## Setup on a new machine
 
@@ -69,8 +69,11 @@ The order is fixed, and the skill comes before spec-kit:
      recommended answer. The technical expert sends the domain expert the one
      line the file holds; the domain expert runs it on the base branch — it is
      `/speckit-clarify` — until nothing is left to ask, commits, pushes and
-     replies. `/plan-feature` again, from `review-plan`, until a run ends with
-     no question.
+     replies. `/plan-feature` again, from `review-plan`, until no question is
+     open. Every question holds the build until the spec answers it; a
+     `MEDIUM` or `LOW` one is also released when the technical expert or the
+     domain expert says the build may start on the recommended answer, and the
+     domain expert can answer it later or never.
    - The technical expert: `/build-feature` (implement, converge).
 
    The plan's Technical Context inherits the platform from the constitution.
