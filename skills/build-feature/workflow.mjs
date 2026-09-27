@@ -777,7 +777,7 @@ const askedBlock = () => (state.questions.length
 const clarifyCommand = () => {
   const dir = state.featureDir
   const ref = cfg.push ? `origin/${state.branch}` : state.branch
-  return `/speckit-clarify The feature is ${dir}: run the prerequisites script with SPECIFY_FEATURE_DIRECTORY=${dir}. Ask me first the questions in ${dir}/${QUESTIONS_FILE} on branch ${state.branch}, those the build waits for before those left open; read that file with: git fetch origin && git show ${ref}:${dir}/${QUESTIONS_FILE}`
+  return `/speckit-clarify Feature ${dir}; run its scripts with SPECIFY_FEATURE_DIRECTORY=${dir}. Ask me first the questions this prints: git fetch origin && git show ${ref}:${dir}/${QUESTIONS_FILE}`
 }
 
 const leftOpenCell = q => (!canLeaveOpen(q) ? 'cannot be left open' : q.leftOpen ? `yes — ${q.leftOpen}` : 'no')
@@ -807,14 +807,15 @@ const questionsDoc = () => [
   '',
   '## How to answer',
   '',
-  `1. On \`${state.baseBranch}\`, pull the latest, and run this in Claude Code:`,
+  `1. Check out \`${state.baseBranch}\` and pull.`,
+  '2. Paste this line into Claude Code as it is:',
   '',
-  '   ```',
-  `   ${clarifyCommand()}`,
-  '   ```',
+  '```',
+  clarifyCommand(),
+  '```',
   '',
-  '2. It asks up to five questions per run, one at a time, each with the recommended answer, and writes every answer into `spec.md`. Run it again until it says nothing is left to ask; a question left open you may skip.',
-  `3. Commit \`${state.featureDir}/spec.md\` on \`${state.baseBranch}\`, push, and tell the technical expert, who reruns \`/plan-feature\`.`,
+  '3. It asks up to five questions per run, one at a time, each with the recommended answer, and writes every answer into `spec.md`. Run it again until it says nothing is left to ask; a question left open you may skip.',
+  `4. Commit \`${state.featureDir}/spec.md\` on \`${state.baseBranch}\`, push, and tell the technical expert, who reruns \`/plan-feature\`.`,
   cfg.push ? null : `\n_This run did not push, so the file is only on the machine that ran it until \`${state.branch}\` is pushed._`,
   '',
   '## What each question is about',
