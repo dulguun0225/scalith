@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // What the skills did on real work — a reader over the Workflow run journals
-// that `build-feature` and `converge-feature` leave behind.
+// that `plan-feature` and `build-feature` leave behind (`converge-feature` until
+// 2026-09-28).
 //
 // Why it exists. Every other measurement in this repo is synthetic: `npm run
 // firing` runs headless sessions against fixtures, `npm run probes` runs them
@@ -815,9 +816,10 @@ function textReport() {
   - near-duplicate findings. Grouping is an exact match after normalising, and
     \`build-feature\` records that exact match alone never fired on re-typed
     wording — which is why its own loop asks the assessment for \`repeatOf\`
-  - which skill invoked the run. Every journal names build-feature's script, so a
-    \`converge-feature\` run is indistinguishable from build-feature with
-    \`from: "converge"\`
+  - which skill invoked the run. Every journal names build-feature's script;
+    since 2026-09-28 plan-feature passes \`until: "analyze"\` and build-feature
+    \`from: "implement"\`, and a run of the removed converge-feature before that
+    is indistinguishable from build-feature with \`from: "converge"\`
   - wall attempts inside an implement agent, or a second implement pass over
     unchecked ids. Neither has a label or a log line; only the phase-level wall
     outcome is recorded

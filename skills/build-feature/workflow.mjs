@@ -7,9 +7,13 @@
 // THE SPEC IS NOT THIS RUN'S. A domain expert writes specs/<NNN>-<name>/spec.md in
 // the project with /speckit-specify and /speckit-clarify, on the feature branch those
 // commands created, and hands the finished spec over; this script starts at plan. No
-// stage, review fix or repair pass edits spec.md, and a finding whose only remedy is
-// a change to the spec is a needs-human exit naming it, addressed to its author — the
-// one artifact in the feature directory this run reads and never writes.
+// stage, review fix or repair pass edits spec.md — the one artifact in the feature
+// directory this run reads and never writes. A finding whose only remedy is a change to
+// the spec is a question for the domain expert (2026-09-28): review-plan, tasks and
+// analyze collect them, work on the recommended answer, and the run stops after analyze
+// with QUESTIONS.md committed, which the domain expert answers with /speckit-clarify;
+// converge stops where it finds one. Two skills start this script: plan-feature
+// (preflight to analyze) and build-feature (implement to finish).
 //
 // Every stage is a fresh subagent with its own model and effort (the TIERS table
 // below; args.tiers overrides any entry). The script is plain JavaScript in the
@@ -42,7 +46,7 @@
 // on the base branch, so a full preflight started there checks out the feature branch —
 // making it when it does not exist — and then merges the base into it; so does every
 // later entry that finds itself on a feature branch. A later entry started ON the base
-// branch — converge-feature closing out a feature implemented on the trunk — makes the
+// branch — build-feature closing out a feature implemented on the trunk — makes the
 // feature branch at the base branch's HEAD and moves onto it (2026-09-25), so no stage of
 // any run commits on the base branch. Without that merge the run plans
 // against a spec the author has since moved and fails its final `merge --ff-only` after
@@ -282,12 +286,23 @@ for (const name of Object.keys(cfg.tiers)) tier(name)
 // One field, one description, on every stage that can write a task or resolve a
 // finding: the review-plan fixer, the tasks stage and the analyze remediator (S.done),
 // and since 2026-09-24 the converge assessment and the forced append. Every stage that
-// returns it is read by the script and stops the run on a non-empty list — a field the
-// schema says stops the run and the script ignores is the defect 211809f fixed.
+// returns it is read by the script — a field the schema says is read and the script
+// ignores is the defect 211809f fixed. Since 2026-09-28 each entry is a question for the
+// domain expert, written to QUESTIONS.md and answered with /speckit-clarify (owner's
+// decision): review-plan, tasks and analyze collect them and the run stops after analyze;
+// converge still stops where it finds one.
 const SPEC_CHANGES_FIELD = {
   type: 'array',
-  items: { type: 'string' },
-  description: 'findings whose only remedy is an edit to the feature\'s spec.md, which no stage of this run may make: one entry per finding, naming the requirement or section and the change the spec needs. Each one stops the run and goes to the spec\'s author, so put here only what cannot be resolved in the artifacts you may write.',
+  items: {
+    type: 'object',
+    required: ['requirement', 'question', 'recommendedAnswer'],
+    properties: {
+      requirement: { type: 'string', description: 'the requirement id or spec section the question is about, with the spec text it concerns quoted' },
+      question: { type: 'string', description: 'one question the domain expert can answer without technical knowledge: plain words, no file names, no plan, code or framework terms, ending with "?"' },
+      recommendedAnswer: { type: 'string', description: 'the answer you recommend, in one sentence, and why in a few words; the run works on this answer until the domain expert gives theirs' },
+    },
+  },
+  description: 'findings whose only remedy is an edit to the feature\'s spec.md, which no stage of this run may make: one question per finding for the domain expert, who answers it into the spec. Put here only what cannot be resolved in the artifacts you may write, and never a question listed in the prompt as already asked.',
 }
 
 // Identity across rounds for the review and analyze loops (2026-09-24), on converge's
@@ -302,8 +317,9 @@ const REPEAT_OF_FIELD = {
 const S = {
   preflight: {
     type: 'object',
-    required: ['ok', 'branch', 'baseBranch', 'featureDir', 'wall', 'onBaseBranch', 'synced', 'clarifications', 'missingInputs', 'checkedTasks', 'openTasks', 'problems'],
+    required: ['ok', 'branch', 'baseBranch', 'featureDir', 'wall', 'onBaseBranch', 'synced', 'clarifications', 'missingInputs', 'checkedTasks', 'openTasks', 'questionsFile', 'problems'],
     properties: {
+      questionsFile: { type: 'boolean', description: 'true when <featureDir>/QUESTIONS.md exists on the branch you finish on' },
       ok: { type: 'boolean' },
       branch: { type: 'string', description: 'the branch checked out when you finish, which is the feature branch whenever you checked one out or made one' },
       baseBranch: { type: 'string', description: 'the base branch you worked against: the one step 2 names' },
@@ -646,7 +662,7 @@ const UNATTENDED = [
 // project with stock spec-kit, and the unattended build starts at plan). Every stage
 // that could reach the file is handed this, in these words, so the ban reads the same
 // wherever an agent meets it; the stages that can return a finding carry `specChanges`
-// beside it, which is the route out — the run stops and the finding goes to the author.
+// beside it, which is the route out — the finding goes to the domain expert as a question.
 const SPEC_IS_NOT_OURS = spec =>
   `THE SPEC IS NOT YOURS TO EDIT. \`${spec}\` was written by the feature's domain expert and is the fixed input to this run: never edit it, never regenerate it, never "align" it with anything, and never add, reword, renumber or delete a requirement, a success criterion, a clarification or an assumption in it. Every other artifact under the feature directory is yours to fix.`
 
@@ -657,13 +673,13 @@ const SPEC_IS_NOT_OURS = spec =>
 // stopped at implement on a task no agent could close; the owner then confirmed every
 // reading the plan had already taken, unchanged. The plan decides an open reading and
 // records it (the "Unattended" rule); a question only the author can answer is a
-// `specChanges` entry, which stops the run where it is found rather than after implement.
+// `specChanges` entry, which reaches the domain expert before implement.
 // Carried by every stage that writes tasks: tasks and remediate, and since 2026-09-24
 // converge and the forced append, which until then could write the same gating task.
 // Every one of them returns `specChanges` and the script reads it, so the constant no
 // longer offers a stage without the field a way to leave the question out.
 const NO_TASK_WAITS_ON_A_PERSON =
-  'No task may wait on a person: never write a task whose completion needs an owner\'s answer, a /speckit-clarify session, a sign-off or a review by anyone outside this run, and never make another task depend on one. A reading of the spec that the plan has already decided and recorded stands as the plan wrote it; a question only the spec\'s author can answer is not a task — it goes in `specChanges`, which stops the run and takes it to that author.'
+  'No task may wait on a person: never write a task whose completion needs an owner\'s answer, a /speckit-clarify session, a sign-off or a review by anyone outside this run, and never make another task depend on one. A reading of the spec that the plan has already decided and recorded stands as the plan wrote it; a question only the domain expert can answer is not a task — it goes in `specChanges`, which takes it to the domain expert.'
 
 // A task the tasks stage's update mode (2026-09-25) found no longer needed. Spec-kit's
 // checklist format has no such state — a task is "- [ ]" or "- [x]" — and both are wrong
@@ -746,6 +762,8 @@ const state = {
   analysis: null, // { ended, rounds, findings } once the analyze loop has run
   implemented: [],
   finishRepaired: false, // true once the finish wall was red and the one repair pass ran
+  questions: [], // { requirement, question, recommendedAnswer, stage } for the domain expert, collected across stages
+  questionsFileExists: false, // set by preflight: QUESTIONS.md is on the branch, so the domain expert's questions are open
   open: [],
   stagesRun: [],
 }
@@ -774,6 +792,76 @@ const state = {
 // run id is on the Workflow tool result the launching session received.
 // ---------------------------------------------------------------------------
 const HANDOFF_FILE = 'HANDOFF.md'
+
+// Questions for the domain expert (owner's decision, 2026-09-28). The four spec handoff
+// skills that ran before the build were removed the same day; their questions are now
+// the ones the build itself raises. review-plan, tasks and analyze collect them instead
+// of stopping at the first, and each stage after the one that raised a question works on
+// its recommended answer. The run stops after analyze and commits QUESTIONS.md beside
+// HANDOFF.md. The domain expert answers on the base branch with stock /speckit-clarify,
+// which takes the file as its prioritisation context, asks up to five questions per run
+// with a recommended answer each, and writes the answers into spec.md. The technical
+// expert then reruns plan-feature from review-plan; that run's sync merges the answers in.
+// A run whose analysis ends with no question removes the file, and a start at implement
+// or later refuses while it is there. Rejected: stopping at the first question, one
+// round trip to the domain expert per stage that finds one.
+const QUESTIONS_FILE = 'QUESTIONS.md'
+
+const addQuestions = (stage, list) => {
+  let added = 0
+  for (let q of list) {
+    if (typeof q === 'string' && q.trim()) q = { requirement: '', question: q, recommendedAnswer: '' }
+    if (!q || typeof q !== 'object' || !String(q.question || '').trim()) continue
+    const key = normText(q.question)
+    if (state.questions.some(e => normText(e.question) === key)) continue
+    state.questions.push({ requirement: q.requirement || '', question: q.question, recommendedAnswer: q.recommendedAnswer || '', stage })
+    added++
+  }
+  if (added) log(`${stage}: ${added} question(s) for the domain expert, ${state.questions.length} in all; the run goes on with the recommended answer(s)`)
+  return added
+}
+
+// Handed to every reader and fixer after the first question, so a question is asked once.
+const askedBlock = () => (state.questions.length
+  ? [
+    'These questions are already with the domain expert, who will answer them in the spec. Until then the plan works on the recommended answer given with each. Do not report any of them again as a finding, and do not return any of them in `specChanges` again:',
+    state.questions.map((q, i) => `Q${i + 1}. ${q.question} Recommended: ${q.recommendedAnswer}`).join('\n'),
+  ].join('\n')
+  : '')
+
+// The one line the technical expert sends. The domain expert runs it on the base branch,
+// where the spec is; the file is on the feature branch. spec-kit's scripts resolve the
+// feature from SPECIFY_FEATURE_DIRECTORY, then from the machine-local .specify/feature.json,
+// never from the branch, so the command names the directory.
+const clarifyCommand = () => {
+  const dir = state.featureDir
+  const ref = cfg.push ? `origin/${state.branch}` : state.branch
+  return `/speckit-clarify The feature is ${dir}: run the prerequisites script with SPECIFY_FEATURE_DIRECTORY=${dir}. Ask me first the questions in ${dir}/${QUESTIONS_FILE} on branch ${state.branch}; read that file with: git fetch origin && git show ${ref}:${dir}/${QUESTIONS_FILE}`
+}
+
+const questionsDoc = () => [
+  `# Questions for the domain expert — ${state.featureDir}`,
+  '',
+  `Planning this feature found ${state.questions.length} question(s) that only the spec can answer. Each has a recommended answer, and the technical work goes on with it until you give yours.`,
+  '',
+  '## How to answer',
+  '',
+  `1. On \`${state.baseBranch}\`, pull the latest, and run this in Claude Code:`,
+  '',
+  '   ```',
+  `   ${clarifyCommand()}`,
+  '   ```',
+  '',
+  '2. It asks up to five questions per run, one at a time, each with a recommended answer, and writes every answer into `spec.md`. Run it again until it says nothing is left to ask.',
+  `3. Commit \`${state.featureDir}/spec.md\` on \`${state.baseBranch}\`, push, and tell the technical expert, who reruns \`/plan-feature\`.`,
+  cfg.push ? null : `\n_This run did not push, so the file is only on the machine that ran it until \`${state.branch}\` is pushed._`,
+  '',
+  '## Questions',
+  '',
+  state.questions.map((q, i) => [`${i + 1}. ${q.question}`, `   - About: ${q.requirement}`, `   - Recommended answer: ${q.recommendedAnswer}`].join('\n')).join('\n'),
+  '',
+  `_Written by \`build-feature\`'s script. The next run that finds questions overwrites it; a run whose analysis finds none removes it._`,
+].filter(l => l !== null).join('\n')
 
 const scalar = v => (typeof v === 'string' ? v : JSON.stringify(v))
 
@@ -839,13 +927,20 @@ const BASE_SOURCE_TEXT = {
 }
 const baseSourceText = src => BASE_SOURCE_TEXT[src] || 'source unknown'
 
+// plan-feature runs preflight to analyze and build-feature implement to finish, so a
+// restart names the skill whose range holds its stage.
+const skillFor = stage => (STAGES.indexOf(stage) <= STAGES.indexOf('analyze') ? 'plan-feature' : 'build-feature')
+
 const handoffDoc = (stage, why, detail, restartFrom) => [
   `# Handoff — the unattended build of ${state.featureDir} stopped at ${stage}`,
   '',
   `**This run has stopped.** \`build-feature\` runs the spec-kit cycle with no human gate: it reached the \`${stage}\` stage, found something no rule its own agents carry can decide, and ended there. Nothing reported below was fixed by the run.`,
   '',
-  `**Who resolves this.** The session that launched the run reads it first. Under \`build-feature\`'s resolution rule it forms a recommendation for each item under *What the stage reported* and acts on every one it holds with high confidence — the recommendation it would hand you expecting you to take it unchanged, resting on the spec, the constitution, the code and the evidence quoted here, never on this run's own plan or tasks, which were written from the spec. It records what it did and what the confidence rested on in \`RESOLUTIONS.md\` beside this file, and restarts the run (below). It brings an item to you only where it does not hold a recommendation with high confidence, where the item came back after its resolution was applied once, or where the only resolution is a move the skill forbids outright — weakening a gate, deleting a test, committing on the base branch, or resolving somebody else's uncommitted work or merge conflict. **If you are a person reading this, read \`RESOLUTIONS.md\` first:** what is left for you is what the session could not settle. Outside these two files the report exists only on the machine that ran it.`,
+  `**Who resolves this.** The session that launched the run reads it first. Under \`build-feature\`'s resolution rule it forms a recommendation for each item under *What the stage reported* and acts on every one it holds with high confidence — the recommendation it would hand you expecting you to take it unchanged, resting on the spec, the constitution, the code and the evidence quoted here, never on this run's own plan or tasks, which were written from the spec. It records what it did and what the confidence rested on in \`RESOLUTIONS.md\` beside this file, and restarts the run (below). It brings an item to you only where it does not hold a recommendation with high confidence, where the item came back after its resolution was applied once, or where the only resolution is a move the skill forbids outright — weakening a gate, deleting a test, committing on the base branch, or resolving somebody else's uncommitted work or merge conflict. **If you are a person reading this, read \`RESOLUTIONS.md\` first:** what is left for you is what the session could not settle. Outside these two files the report exists only on the machine that ran it. A change to \`spec.md\` is never the session's to make: it goes to the domain expert as a question in \`${QUESTIONS_FILE}\`.`,
   '',
+  state.questions.length
+    ? `**Questions for the domain expert.** ${state.questions.length} question(s) whose answer belongs in \`spec.md\` are in \`${QUESTIONS_FILE}\` beside this file, each with a recommended answer. Send the domain expert this line, to run on \`${state.baseBranch}\`: \`${clarifyCommand()}\`. Once their answers are pushed to \`${state.baseBranch}\`, rerun \`/plan-feature\`.\n`
+    : null,
   '| | |',
   '|---|---|',
   `| Stopped at stage | \`${stage}\` |`,
@@ -865,14 +960,14 @@ const handoffDoc = (stage, why, detail, restartFrom) => [
   '',
   '## Restarting the run',
   '',
-  `Once the decision is applied, check out \`${state.branch || 'the feature branch'}\` and restart ${restartAt(detail, restartFrom) && restartAt(detail, restartFrom) !== stage ? 'at the stage the reason names' : 'at this stage'} through the \`build-feature\` skill with \`from: "${restartAt(detail, restartFrom) || stage}"\` and \`wall: "${state.wall || ''}"\`; \`wall\` is required on any start after preflight, and the feature directory and branch are discovered from the checkout unless you pass \`featureDir: "${state.featureDir}"\` and \`branch: "${state.branch || ''}"\`. A decision that was a change to \`${state.featureDir}/spec.md\` restarts at \`from: "${SPEC_EDIT_RESTART}"\`, whatever stage stopped: that start reads the plan already on the branch against the edited spec and repairs it in place, and every stage after it runs again over the result. \`from: "plan"\` regenerates the plan whole and discards every review fix; it is there for a person who wants that. To replay this run instead of restarting it, pass \`resumeFromRunId\` with this run's id (below).`,
+  `Once the decision is applied, check out \`${state.branch || 'the feature branch'}\` and restart ${restartAt(detail, restartFrom) && restartAt(detail, restartFrom) !== stage ? 'at the stage the reason names' : 'at this stage'} through the \`${skillFor(restartAt(detail, restartFrom) || stage)}\` skill with \`from: "${restartAt(detail, restartFrom) || stage}"\` and \`wall: "${state.wall || ''}"\`; \`wall\` is required on any start after preflight, and the feature directory and branch are discovered from the checkout unless you pass \`featureDir: "${state.featureDir}"\` and \`branch: "${state.branch || ''}"\`. Once the domain expert's answers are in \`${state.featureDir}/spec.md\` on the base branch, restart through the \`plan-feature\` skill with \`from: "${SPEC_EDIT_RESTART}"\`, whatever stage stopped: that start reads the plan already on the branch against the edited spec and repairs it in place, and every stage after it runs again over the result. \`from: "plan"\` regenerates the plan whole and discards every review fix; it is there for a person who wants that. To replay this run instead of restarting it, pass \`resumeFromRunId\` with this run's id (below).`,
   '',
   '## Run journal',
   '',
   'This file names no journal path, because the run cannot see its own id. The run id — `wf_…` — is on the Workflow tool result the launching session received, and the session that resolves this stop records it in `RESOLUTIONS.md`. On the machine that ran it, the journal is `~/.claude/projects/<the project directory, every / replaced by ->/<session id>/workflows/<run id>.json`, and it holds every agent prompt and every agent return value of this run. It is machine-local and is not in this repository: if you are reading this anywhere else, this file is the whole of what the run reported.',
   '',
   `_Written by \`build-feature\`'s handoff stage. The next needs-human exit on this feature overwrites it; \`git log -p -- ${state.featureDir}/${HANDOFF_FILE}\` holds the earlier ones._`,
-].join('\n')
+].filter(l => l !== null).join('\n')
 
 // Returns the handoff record for the return value and never throws: a handoff that
 // fails must not cost the caller the verdict, because losing the findings because the
@@ -923,30 +1018,33 @@ const writeHandoff = async (stage, why, detail, restartFrom) => {
     return { written: false, path: null, note: `${state.handoffRefused} The detail on this return value is the whole report.` }
   }
   const path = `${state.featureDir}/${HANDOFF_FILE}`
+  const qpath = state.questions.length ? `${state.featureDir}/${QUESTIONS_FILE}` : null
+  const paths = qpath ? `${path} ${qpath}` : path
   let r = null
   try {
     const t = tier('handoff')
     r = await agent([
       UNATTENDED,
-      `The unattended feature build has stopped at the "${stage}" stage and needs a person. Your only job is to leave a durable handoff file in the repository, so that somebody who was not in this session can pick the decision up. Fix nothing, run no build, and change no file other than the one named here.`,
+      `The unattended feature build has stopped at the "${stage}" stage and needs a person. Your only job is to leave ${qpath ? 'two durable files' : 'a durable handoff file'} in the repository, so that somebody who was not in this session can pick the decision up. Fix nothing, run no build, and change no file other than the ${qpath ? 'two' : 'one'} named here.`,
       '1. Get today\'s date: run `date -I`.',
-      `2. Write the document between the BEGIN and END markers below to \`${path}\`, byte for byte, replacing exactly one placeholder and nothing else: \`{{RUN_DATE}}\` with the date from step 1. Do not look for this run's journal or add a path to it: the document says where it is kept, and the newest journal on disk belongs to another run. Do not summarise it, re-word it, reorder it, shorten it or add to it — it is the report, not a draft of one. Do not write the BEGIN and END marker lines themselves. Overwrite the file if it already exists.`,
-      `3. Commit that one file and nothing else: \`git add -- ${path} && git commit -m "handoff: the ${stage} stage stopped and needs a person" -- ${path}\`. The pathspec matters: the working tree may hold the run's unfinished or failing work, and none of it belongs in this commit.`,
+      `2. Write the document between the BEGIN and END markers below to \`${path}\`, byte for byte, replacing exactly one placeholder and nothing else: \`{{RUN_DATE}}\` with the date from step 1. Do not look for this run's journal or add a path to it: the document says where it is kept, and the newest journal on disk belongs to another run. Do not summarise it, re-word it, reorder it, shorten it or add to it — it is the report, not a draft of one. Do not write the BEGIN and END marker lines themselves. Overwrite the file if it already exists.${qpath ? ` Write the document between the BEGIN QUESTIONS and END QUESTIONS markers to \`${qpath}\` the same way, byte for byte; it has no placeholder.` : ''}`,
+      `3. Commit ${qpath ? 'those two files' : 'that one file'} and nothing else: \`git add -- ${paths} && git commit -m "handoff: the ${stage} stage stopped and needs a person" -- ${paths}\`. The pathspec matters: the working tree may hold the run's unfinished or failing work, and none of it belongs in this commit.`,
       cfg.push
         ? '4. Push it: `git push -u origin HEAD`. Set pushed=true only if the push succeeded; a push that fails is not a failed handoff, so report it in note and leave written=true.'
         : '4. Do not push; return pushed=false. This run was started with pushing disabled.',
-      'Return written=true only when the whole document is on disk at that path. If any step fails, return written=false with the reason in note; never return written=true for a partial or paraphrased file.',
+      `Return written=true only when the whole document is on disk at that path${qpath ? ' and the questions document at its path' : ''}. If any step fails, return written=false with the reason in note; never return written=true for a partial or paraphrased file.`,
       '--- BEGIN DOCUMENT ---',
       handoffDoc(stage, why, detail, restartFrom),
       '--- END DOCUMENT ---',
-    ].join('\n'), { label: `handoff (${t.model} ${t.effort})`, phase: 'Handoff', schema: S.handoff, model: t.model, effort: t.effort })
+      qpath ? ['--- BEGIN QUESTIONS ---', questionsDoc(), '--- END QUESTIONS ---'].join('\n') : '',
+    ].filter(Boolean).join('\n'), { label: `handoff (${t.model} ${t.effort})`, phase: 'Handoff', schema: S.handoff, model: t.model, effort: t.effort })
   } catch (e) {
     r = null
     log(`the handoff agent threw: ${e && e.message ? e.message : String(e)}`)
   }
   if (r && r.written && r.path) {
     log(`handoff written to ${r.path}${r.commit ? ` (${r.commit})` : ''}${r.pushed ? ', pushed' : ''}`)
-    return { written: true, path: r.path, commit: r.commit || '', pushed: !!r.pushed, note: r.note || '' }
+    return { written: true, path: r.path, questionsPath: qpath, commit: r.commit || '', pushed: !!r.pushed, note: r.note || '' }
   }
   log(`NO handoff file was written: the findings of this run exist only on its return value and in its journal`)
   return {
@@ -974,6 +1072,8 @@ const needsHuman = async (stage, why, detail, restartFrom) => {
     baseBranchSource: state.baseBranchSource,
     rounds: state.rounds,
     stagesRun: state.stagesRun,
+    questions: state.questions,
+    clarifyCommand: state.questions.length && state.featureDir && state.branch ? clarifyCommand() : null,
     handoff,
   }
 }
@@ -1023,10 +1123,10 @@ const run = async (name, stage, prompt, schema, group) => {
 // applies what still holds and the next analysis reads that fix — and a finding the
 // reviewer failed to label a repeat meets the survivor test a second time there.
 //
-// A fix round that reports `specChanges` ends the loop with them: the only remedy the
-// fixer could see for those findings is an edit to spec.md, which this run does not
-// make, so the caller takes them to the spec's author rather than running another
-// round that would find the same thing.
+// A fix round that reports `specChanges` hands them to addQuestions (2026-09-28): the
+// only remedy the fixer could see is an edit to spec.md, which this run does not make,
+// so they go to the domain expert after analyze and the loop goes on with the
+// recommended answer. Until that day the loop ended on them.
 const specChangesOf = r => (r && Array.isArray(r.specChanges) ? r.specChanges.filter(Boolean) : [])
 
 const normText = v => String(v || '').toLowerCase().replace(/\s+/g, ' ').trim().replace(/\.$/, '')
@@ -1100,26 +1200,24 @@ async function reviewLoop({ kind, group, reviewer, fixer, reviewPrompt, fixPromp
     const survivors = serious.filter(f => handed.roundOf(f))
     log(`review-${kind} round ${round}${final ? ' (final)' : ''}: ${review.verdict}, ${blocking.length} blocking, ${serious.length - blocking.length} major, ${review.findings.length - serious.length} minor${survivors.length ? `, ${survivors.length} survived the fix round that was handed it` : ''}`)
     if (survivors.length) {
-      return { approved: false, ended: 'survivor', rounds: round, findings: survivorDetail(review.findings, f => f.severity !== 'minor', handed), survivors: survivors.map(f => markSurvivor(f, handed)), specChanges: [] }
+      return { approved: false, ended: 'survivor', rounds: round, findings: survivorDetail(review.findings, f => f.severity !== 'minor', handed), survivors: survivors.map(f => markSurvivor(f, handed)) }
     }
     if (review.verdict === 'approve' && serious.length === 0) {
       if (review.findings.length) {
         const fixed = await run(fixer, `fix-${kind} minors`, fixPrompt(review.findings, round, true), S.done, group)
-        const specChanges = specChangesOf(fixed)
-        if (specChanges.length) return { approved: false, ended: 'spec-changes', rounds: round, findings: review.findings, survivors: [], specChanges }
+        addQuestions(`review-${kind}`, specChangesOf(fixed))
       }
-      return { approved: true, ended: 'approved', rounds: round, findings: review.findings, survivors: [], specChanges: [] }
+      return { approved: true, ended: 'approved', rounds: round, findings: review.findings, survivors: [] }
     }
     if (final) {
       log(`review-${kind}: round cap ${max} reached and its findings applied; the final review found no survivor, so its ${review.findings.length} finding(s) are reported open, unapplied, and the run goes on`)
-      return { approved: false, ended: 'round-cap', rounds: round, findings: review.findings, survivors: [], specChanges: [] }
+      return { approved: false, ended: 'round-cap', rounds: round, findings: review.findings, survivors: [] }
     }
     handed.hand(round, review.findings)
     const capFix = round === max + 1
     const fixed = await run(fixer, `fix-${kind} ${round}${capFix ? ' (cap)' : ''}`, fixPrompt(review.findings, round, false), S.done, group)
     handed.noteSkipped(round, fixed.skipped)
-    const specChanges = specChangesOf(fixed)
-    if (specChanges.length) return { approved: false, ended: 'spec-changes', rounds: round, findings: review.findings, survivors: [], specChanges }
+    addQuestions(`review-${kind}`, specChangesOf(fixed))
   }
   throw new Error('reviewLoop fell out of its bound') // unreachable: round max + 2 always returns
 }
@@ -1168,7 +1266,7 @@ async function reviewLoop({ kind, group, reviewer, fixer, reviewPrompt, fixPromp
 // The discovery half runs even on a start at a later stage: before 2026-09-21 a
 // `from: "plan"` restart left state.branch null, the handoff table said "(unknown)" and
 // finish merged from HEAD@{1}. A later-stage run standing on the base branch — which is
-// converge-feature closing out a feature implemented on the trunk, as 001 was — is
+// a close-out of a feature implemented on the trunk, as 001 was — is
 // resuming work that already lives there, and until 2026-09-25 it ran there: no branch,
 // no sync, and every converge, implement and fix agent committing on the trunk, while
 // SKILL.md said the run never does. Since then preflight makes the feature branch at the
@@ -1383,6 +1481,7 @@ const codeList = names => names.map(n => `\`${n}\``).join(' and ')
     runs('tasks')
       ? '   Then, whether or not you merged anything, on the branch you are on now — after the checkout of step 5 and the sync of this step, so the file is the one the run will build from — when `<featureDir>/tasks.md` exists, list every task it holds: `grep -oE \'^[[:space:]]*[-*] \\[[ xX]\\] T[0-9]+\' <featureDir>/tasks.md`. Return the id (e.g. `T012`) of each ticked one, `[x]` or `[X]`, in `checkedTasks`, and of each open one, `[ ]`, in `openTasks`, both in file order. Return both empty when the file does not exist or holds no task. This is a fact about the file, not a problem.'
       : '   Return `checkedTasks` and `openTasks` empty: no stage of this run writes tasks.md.',
+    `   Then, on the branch you are on now, \`test -e <featureDir>/${QUESTIONS_FILE}\`: return \`questionsFile\` true when the file exists. It holds questions for the domain expert that an earlier run raised; this is a fact about the branch, not a problem. Where you stopped before resolving a feature directory, return it false.`,
     '7. Make spec-kit agree with the feature you resolved. Its own scripts resolve the feature from the `SPECIFY_FEATURE_DIRECTORY` environment variable, then from `.specify/feature.json`, and from nothing else — never from the branch name — so a stale file sends every later stage into another feature\'s directory. Run `git check-ignore -q .specify/feature.json`. Exit 0 (the file is git-ignored, which is how spec-kit ships it): if its `feature_directory` is not the directory you resolved, write the file as exactly `{"feature_directory":"<the resolved directory>"}` and return `featureJson` "written"; if it already names it, write nothing and return "unchanged". A non-zero exit means the repository tracks the file: leave it untouched, return "tracked", and add no problem — the run carries the environment variable to its stages instead.',
     full ? '8. `grep -n "\\[NEEDS CLARIFICATION" <featureDir>/spec.md` — return every hit in `clarifications`, quoted with its line number. Those markers are the spec author\'s to resolve with `/speckit-clarify`, and this run never answers one.' : '',
     full ? '9. `.specify/` must exist with `.specify/memory/constitution.md`, and `.claude/skills/speckit-plan/SKILL.md`, `speckit-tasks`, `speckit-analyze`, `speckit-implement`, `speckit-converge` must all be installed. Any missing one is a problem.' : '',
@@ -1457,7 +1556,7 @@ const codeList = names => names.map(n => `\`${n}\``).join(' and ')
         ? `the first stage that writes ${missing.filter(f => producerOf(f) === restart).join(' and ')}`
         : 'because the sync also changed spec.md, and that start reads the plan already written against the new text and repairs it'}${state.onBaseBranch && !cfg.featureDir
         // Adversarial review, 2026-09-25: on the base branch with no featureDir, step 4 answers
-        // only with the one directory holding a spec.md and no plan.md, so a converge-feature
+        // only with the one directory holding a spec.md and no plan.md, so a
         // close-out of a feature implemented on the trunk resolves some other, unplanned feature
         // and stops here on its missing plan.md — with a restart that would build that one.
         ? `. The feature was resolved on \`${state.baseBranch}\` as the one directory under specs/ with a written spec.md and no plan.md, which is the only feature a start on the base branch finds without \`featureDir\`: if this run was for another feature — one already planned or implemented on the base branch — restart with \`featureDir\` naming it rather than with the \`from\` above`
@@ -1484,6 +1583,15 @@ const codeList = names => names.map(n => `\`${n}\``).join(' and ')
       p.problems)
   }
   if (!state.wall) return await needsHuman('preflight', 'no definition-of-done command: pass args.wall', p.problems)
+  state.questionsFileExists = !!p.questionsFile
+  // Open questions for the domain expert (2026-09-28): a start after analyze would build
+  // on answers the domain expert has not given. A start at analyze or earlier reads the
+  // spec again and removes the file when nothing is open.
+  if (state.questionsFileExists && STAGES.indexOf(cfg.from) > STAGES.indexOf('analyze')) {
+    return await needsHuman('preflight',
+      `${state.featureDir}/${QUESTIONS_FILE} is on \`${state.branch}\`: questions for the domain expert are open, and this run was told to start at "${cfg.from}", which would build on answers not given yet. Once the domain expert has answered them into spec.md on \`${state.baseBranch}\` and pushed, run plan-feature with \`from: "${SPEC_EDIT_RESTART}"\`; it removes the file when its analysis finds no question open, and this start is then free to run`,
+      { questionsFile: `${state.featureDir}/${QUESTIONS_FILE}`, from: cfg.from, restartFrom: SPEC_EDIT_RESTART }, SPEC_EDIT_RESTART)
+  }
   if (Array.isArray(p.clarifications) && p.clarifications.length) {
     return await needsHuman('preflight',
       `${p.clarifications.length} "[NEEDS CLARIFICATION]" marker(s) are still in ${state.featureDir}/spec.md. They are the spec author's to resolve, with \`/speckit-clarify\` in the project, and this run answers none: it does not edit the spec, and planning against an unresolved marker decides by accident what the marker exists to decide. Restart the build once the spec is clarified`,
@@ -1564,22 +1672,19 @@ if (runs('plan') || runs('review-plan')) {
         `Each finding names the exact file and location and the concrete edit that resolves it, and no finding's fix is an edit to ${P.spec}. Verdict "fix" when any finding is blocking or major; "approve" otherwise.`,
         round > 1 ? `This is review round ${round}; earlier findings were applied. Check they were applied correctly and look for what the fix broke.` : '',
         prior,
+        askedBlock(),
       ].filter(Boolean).join('\n'),
       fixPrompt: (findings, round, minorsOnly) => [
         UNATTENDED,
         `Apply the following review findings to the plan artifacts under ${state.featureDir}. Edit in place; do not regenerate a file. Where a finding says a plan artifact disagrees with the current text of ${P.spec}, the spec is right: bring the artifact into agreement with it. When a finding says the constitution needs an amendment, amend ${CONSTITUTION} only if the amendment passes the constitution's Governance admission test (it binds two or more features, or a table the feature does not own — otherwise change the plan instead and say so under skipped), following the constitution's own amendment and versioning rules and only in the articles it marks as the project's own, and record the amendment in ${P.research}.`,
         SPEC_IS_NOT_OURS(P.spec),
-        `Where a finding cannot be resolved in the plan artifacts or the constitution because the only remedy is a change to ${P.spec} — the spec contradicts itself, the constitution or the code, or it is silent on something no plan can decide — do not apply it and do not work around it: put it in \`specChanges\`, naming the requirement and the change the spec needs. That stops the run and takes the finding to the spec's author, so put there only what you genuinely cannot resolve in the files you may write.`,
+        `Where a finding cannot be resolved in the plan artifacts or the constitution because the only remedy is a change to ${P.spec} — the spec contradicts itself, the constitution or the code, or it is silent on something no plan can decide — put it in \`specChanges\` as a question for the domain expert, with your recommended answer. Then work on that answer: apply the finding in the plan artifacts as if the spec said it, and record in ${P.research}, under the requirement, that this reading waits on the domain expert's answer. The run goes on, and the question goes to the domain expert after analysis, so put there only what you genuinely cannot resolve in the files you may write.`,
+        askedBlock(),
         minorsOnly ? 'These are minor findings; apply each unless it would change meaning.' : 'Apply every finding. If a finding is wrong against the spec or the code, do not apply it and list it under skipped with the reason.',
         findingsBlock(findings),
         `Then commit with the message "plan: review round ${round}". Return done=true with the short sha.`,
-      ].join('\n'),
+      ].filter(Boolean).join('\n'),
     })
-    if (r.specChanges && r.specChanges.length) {
-      return await needsHuman('review-plan',
-        `a review finding of the plan can only be resolved by changing ${P.spec}, and no stage of this run edits the spec: it belongs to the domain and technical experts and was written before the build started. The ${r.specChanges.length} change(s) below each go to the expert the change belongs to — a domain decision to the domain expert in writing, which reopens the spec handoff, and a technical one to the technical expert as an edit to the spec — and the build restarts at ${SPEC_EDIT_RESTART} afterwards, which reads this plan against the edited spec and repairs it in place. Nothing else in the plan was left unapplied`,
-        r.specChanges, SPEC_EDIT_RESTART)
-    }
     if (r.ended === 'survivor') {
       return await needsHuman('review-plan',
         `${r.survivors.length} blocking or major finding(s) survived the fix round that was handed them: the loop applied every finding of that round — or the fixer declined one with its reason — and a later fresh-context review, round ${r.rounds}, reports the same defect again. Survived: ${r.survivors.map(f => `[${f.severity}] ${f.artifact} — ${f.location} (handed in round ${f.survivedRound})`).join('; ')}. A plan finding the loop has tried once and lost is usually a decision the run is not authorised to take — a design the review keeps refuting, a constitution amendment that fails its admission test, or a requirement the plan narrows rather than meets — so it is not tried again`,
@@ -1599,7 +1704,7 @@ const TASK_RULES = P => `Rules: every task names the file it touches; every phas
 // tasks.md does not exist, or ticks nothing, and the stage generates it with
 // /speckit-tasks exactly as before. Where preflight found ticked tasks in it — a restart at
 // review-plan after a spec edit on a feature already implemented or converged, the restart
-// converge-feature's spec exits name — the stage updates the file in place instead (owner's
+// a converge-stage question names — the stage updates the file in place instead (owner's
 // decision, 2026-09-25): ticked tasks stay ticked, forced convergence phases included; a
 // ticked task whose requirement the change altered is unticked with the reason in its line;
 // a task the revised spec and plan no longer need is marked removed (REMOVED_TASK), never
@@ -1630,6 +1735,7 @@ if (runs('tasks')) {
       `The feature is ${state.featureDir}.`,
       specNote,
       NO_TASK_WAITS_ON_A_PERSON,
+      askedBlock(),
       cfg.tasksGuidance ? `Arguments for the skill (task generation constraints): ${cfg.tasksGuidance}` : 'Arguments for the skill: none.',
       TASK_RULES(P),
       `Return done=true with the number of tasks and phases written to ${P.tasks}.`,
@@ -1640,6 +1746,7 @@ if (runs('tasks')) {
       `The feature is ${state.featureDir}. ${P.tasks} already exists and ${before.length} of its tasks are ticked: work an earlier run implemented and committed, convergence and forced convergence phases included. This run follows an edit to the spec or a revision of the plan, so bring ${P.tasks} into agreement with ${P.spec} and ${P.plan} as they stand now, IN PLACE. Do not regenerate it: do not run speckit-tasks' generation, do not rewrite the file from the template, and never renumber, reorder or re-word an existing task. Read \`.claude/skills/speckit-tasks/SKILL.md\` for its checklist format, phase structure and task rules only, and apply them to the tasks you add.`,
       specNote,
       NO_TASK_WAITS_ON_A_PERSON,
+      askedBlock(),
       cfg.tasksGuidance ? `Task generation constraints, for the tasks you add: ${cfg.tasksGuidance}` : '',
       `Read the spec, ${P.plan} and its companions, ${P.tasks} and the code the ticked tasks produced. Then, task by task:`,
       '- A ticked task whose requirement, criterion or plan decision is unchanged stays exactly as it is, "- [x]" — every task of a "Convergence" or "Convergence (forced round n)" phase included. Work that was done is not redone because the spec moved somewhere else.',
@@ -1651,16 +1758,11 @@ if (runs('tasks')) {
       TASK_RULES(P),
       `Commit ${P.tasks} with the message "tasks: update in place after a spec or plan revision". Return done=true, the commit sha, and every task you reopened, removed or added — reopened and removed each with the reason its line carries.`,
     ].filter(Boolean).join('\n'), S.tasksUpdated, 'Tasks')
-  // NO_TASK_WAITS_ON_A_PERSON sends a question only the author can answer to
-  // `specChanges`, and the schema tells this agent that field stops the run. Until
-  // 2026-09-24 nothing here read it, so the question left the run with no trace and
-  // analyze was the next chance to find it again.
-  const specChanges = specChangesOf(generated)
-  if (specChanges.length) {
-    return await needsHuman('tasks',
-      `writing the tasks found ${specChanges.length} question(s) only an expert can answer in ${P.spec}, and no stage of this run edits the spec: it belongs to the domain and technical experts and was written before the build started. The change(s) below each go to the expert the change belongs to — a domain decision to the domain expert in writing, which reopens the spec handoff, and a technical one to the technical expert as an edit to the spec — and the build restarts at ${SPEC_EDIT_RESTART} afterwards, which reads the plan against the edited spec and repairs it in place`,
-      specChanges, SPEC_EDIT_RESTART)
-  }
+  // NO_TASK_WAITS_ON_A_PERSON sends a question only the domain expert can answer to
+  // `specChanges`. Until 2026-09-24 nothing here read it, so the question left the run
+  // with no trace; until 2026-09-28 it stopped the run here. It is now collected, and the
+  // run stops after analyze with every question asked at once.
+  addQuestions('tasks', specChangesOf(generated))
   // The open tasks are certified too (adversarial review, 2026-09-25): the update may not
   // delete one — a later append would reuse its id and its requirement would go unplanned
   // — and may not tick one, which claims work nobody did and which implement then skips.
@@ -1765,6 +1867,7 @@ if (runs('analyze')) {
       REMOVED_TASK,
       round === 1 ? analyzeCarry() : '',
       handed.block('analysis', f => `${f.id} [${f.severity}] ${f.artifact} — ${f.location}: ${f.summary}`),
+      askedBlock(),
     ].filter(Boolean).join('\n'), S.analysis, 'Tasks')
     state.rounds.analyze = round
     const critical = analysis.findings.filter(f => f.severity === 'CRITICAL')
@@ -1789,21 +1892,43 @@ if (runs('analyze')) {
       `Resolve the following analysis findings by editing the artifact each one names under ${state.featureDir} (plan.md and its companions, or tasks.md) or ${CONSTITUTION} for a constitution finding. Edit in place. A coverage gap is resolved by adding tasks to the right phase of ${P.tasks} with new ids after the current maximum, never by renumbering. A constitution violation is resolved by changing the plan, not the constitution, unless the finding says the constitution is what is wrong.`,
       SPEC_IS_NOT_OURS(P.spec),
       `${REMOVED_TASK} A removed task's id counts toward the current maximum.`,
-      `So a finding the analysis files against the spec is resolved in the plan or the tasks where it can be — the spec is the authority the other artifacts are wrong against — and where it genuinely cannot be, put it in \`specChanges\` naming the requirement and the change the spec needs, apply the rest, and change nothing in ${P.spec}. \`specChanges\` stops the run and takes those findings to the spec's author, so put there only what no edit you are allowed to make can resolve.`,
+      `So a finding the analysis files against the spec is resolved in the plan or the tasks where it can be — the spec is the authority the other artifacts are wrong against — and where it genuinely cannot be, put it in \`specChanges\` as a question for the domain expert with your recommended answer, resolve the finding in the plan and the tasks on that answer, record in ${P.research}, under the requirement, that this reading waits on the domain expert's answer, apply the rest, and change nothing in ${P.spec}. The question goes to the domain expert after analysis, so put there only what no edit you are allowed to make can resolve.`,
       NO_TASK_WAITS_ON_A_PERSON,
+      askedBlock(),
       'Apply every CRITICAL and HIGH finding; apply MEDIUM and LOW ones when the edit is local and safe, otherwise leave them.',
       analysis.findings.map(f => `${f.id} [${f.severity}] ${f.artifact} — ${f.location}: ${f.summary}\n   Recommendation: ${f.recommendation}`).join('\n'),
       `Then commit with the message "tasks: analysis round ${round}". Return done=true with the short sha and the findings you left unapplied under skipped.`,
-    ].join('\n'), S.done, 'Tasks')
+    ].filter(Boolean).join('\n'), S.done, 'Tasks')
     handed.noteSkipped(round, remedied.skipped)
-    const specChanges = specChangesOf(remedied)
-    if (specChanges.length) {
-      return await needsHuman('analyze',
-        `an analysis finding can only be resolved by changing ${P.spec}, and no stage of this run edits the spec: it belongs to the domain and technical experts and was written before the build started. The ${specChanges.length} change(s) below each go to the expert the change belongs to — a domain decision to the domain expert in writing, which reopens the spec handoff, and a technical one to the technical expert as an edit to the spec — and the build restarts at ${SPEC_EDIT_RESTART} afterwards, which reads the plan against the edited spec and repairs it in place. Every other finding of this round was applied`,
-        specChanges, SPEC_EDIT_RESTART)
-    }
+    addQuestions('analyze', specChangesOf(remedied))
   }
   state.analysis = { ended, rounds: state.rounds.analyze, findings: analysis ? analysis.findings : [] }
+}
+
+// The questions stop (owner's decision, 2026-09-28). Every question review-plan, tasks
+// and analyze raised goes to the domain expert at once, after the planning has run on
+// the recommended answers. A run that stopped earlier on something else has already
+// written them, since writeHandoff writes QUESTIONS.md whenever any are held.
+if (state.questions.length) {
+  return await needsHuman(state.stagesRun[state.stagesRun.length - 1] || cfg.until,
+    `${state.questions.length} question(s) can only be answered by a change to ${state.featureDir}/spec.md, which no stage of this run edits. They are in ${QUESTIONS_FILE}, each with a recommended answer, for the domain expert to answer with /speckit-clarify on \`${state.baseBranch}\`; the plan and tasks were written on the recommended answers. Once the answers are pushed, rerun plan-feature with \`from: "${SPEC_EDIT_RESTART}"\`, which merges them in, reads the plan against the answered spec and repairs it in place`,
+    state.questions, SPEC_EDIT_RESTART)
+}
+// A QUESTIONS.md from an earlier run is stale once an analysis ends with none open, and a
+// start at implement or later refuses while the file is there.
+if (state.questionsFileExists && runs('analyze')) {
+  const path = `${state.featureDir}/${QUESTIONS_FILE}`
+  const t = tier('handoff')
+  let cleared = null
+  try {
+    cleared = await agent([
+      UNATTENDED,
+      `\`${path}\` holds questions for the domain expert that an earlier run raised. This run's plan review, tasks and analysis read the spec as it stands and raised none, so the file is stale. Run \`git rm -q -- ${path} && git commit -m "questions: none open after analysis" -- ${path}\` and change nothing else. Return done=true with the short sha, or done=false with the reason in summary.`,
+    ].join('\n'), { label: `clear questions (${t.model} ${t.effort})`, phase: 'Tasks', schema: S.done, model: t.model, effort: t.effort })
+  } catch (e) {
+    log(`the clear-questions agent threw: ${e && e.message ? e.message : String(e)}`)
+  }
+  log(cleared && cleared.done ? `${path} removed: no question is open` : `${path} is stale and was NOT removed; a start at implement will refuse until it is`)
 }
 
 // ---------------------------------------------------------------------------
@@ -2055,7 +2180,7 @@ if (runs('converge')) {
   // The reason every converge-stage `specChanges` exit gives — the assessment's and the
   // forced append's alike — in the words the tasks exit uses.
   const specWhy = (where, n) =>
-    `${where} found ${n} question(s) only an expert can answer in ${P.spec}, and no stage of this run edits the spec or writes a task that waits on a person: it belongs to the domain and technical experts and was written before the build started. The change(s) below each go to the expert the change belongs to — a domain decision to the domain expert in writing, which reopens the spec handoff, and a technical one to the technical expert as an edit to the spec — and the build restarts at ${SPEC_EDIT_RESTART} afterwards, which reads the plan against the edited spec and repairs it in place`
+    `${where} found ${n} question(s) only the domain expert can answer in ${P.spec}, and no stage of this run edits the spec or writes a task that waits on a person. They are in ${QUESTIONS_FILE}, each with a recommended answer, for the domain expert to answer with /speckit-clarify on \`${state.baseBranch}\`. Once the answers are pushed, rerun plan-feature with \`from: "${SPEC_EDIT_RESTART}"\`, which reads the plan against the answered spec and repairs it in place, and then build-feature`
 
   // A finding's identity, so the loop can tell a finding it already forced from a new
   // one. Severity, location and summary, lowercased with whitespace collapsed and a
@@ -2177,7 +2302,7 @@ if (runs('converge')) {
     `${SPEC_IS_NOT_OURS(P.spec)} No task you write asks anyone else to either: a task worded to reconcile the spec with the code is that edit at one remove. Write each task against the code, the tests, the gates, the documents or the plan.`,
     `None of these is deferred by ${P.spec} itself — where the assessment offered a deferral for one, its quotation was not found in ${P.spec} — and that is the only deferral that exempts a finding here: a scope boundary, named gap or deferral in plan.md, tasks.md, research.md, docs/GATES.md or specs/trace-waivers.tsv is not a reason to drop a finding or to write its task as anything but the fix.`,
     NO_TASK_WAITS_ON_A_PERSON,
-    `That is the one judgment this prompt leaves you. Where a finding below can be closed only by an answer from the spec's author — the only task you could write for it would wait on that answer — append nothing and commit nothing, for that finding or any other: return appended=false, \`tasks\` empty, and every such finding in \`specChanges\`, naming the requirement or section and the change the spec needs. The run stops there and goes to the author; the findings you did not name are assessed again when it restarts.`,
+    `That is the one judgment this prompt leaves you. Where a finding below can be closed only by an answer from the domain expert — the only task you could write for it would wait on that answer — append nothing and commit nothing, for that finding or any other: return appended=false, \`tasks\` empty, and every such finding in \`specChanges\` as a question for the domain expert with your recommended answer. The run stops there and the questions go to the domain expert; the findings you did not name are assessed again when it restarts.`,
     'The findings, exactly as the assessment returned them:',
     forcedFindingsBlock(fs),
     `Append to the end of ${P.tasks}, following /speckit-converge's own append contract and nothing else: append only, rewrite nothing, renumber nothing, touch no existing task and no earlier convergence phase, and change no file but ${P.tasks}.`,
@@ -2230,7 +2355,10 @@ if (runs('converge')) {
     // Read before the outcome: a phase this round appended beside a question for the
     // author is left unimplemented, since the restart the question needs is at review-plan.
     const askedR = specChangesOf(last)
-    if (askedR.length) return await needsHuman('converge', specWhy(`converge round ${round}`, askedR.length), askedR, SPEC_EDIT_RESTART)
+    if (askedR.length) {
+      addQuestions('converge', askedR)
+      return await needsHuman('converge', specWhy(`converge round ${round}`, askedR.length), askedR, SPEC_EDIT_RESTART)
+    }
     const findings = Array.isArray(last.findings) ? last.findings : []
     await checkDeferrals(findings, round)
     noteDeferred(findings, round)
@@ -2262,7 +2390,10 @@ if (runs('converge')) {
         // Read before `appended`: a forced append that routes a finding to the author
         // returns appended=false by instruction, and that is not a failed write to reconcile.
         const askedF = specChangesOf(fa)
-        if (askedF.length) return await needsHuman('converge', specWhy(`the forced append of converge round ${round}`, askedF.length), askedF, SPEC_EDIT_RESTART)
+        if (askedF.length) {
+          addQuestions('converge', askedF)
+          return await needsHuman('converge', specWhy(`the forced append of converge round ${round}`, askedF.length), askedF, SPEC_EDIT_RESTART)
+        }
         // A failed append is reconciled and retried once, never escalated blind. The
         // sequence is: one reconcile agent brings tasks.md to a known state, the
         // parse-only `phases` reader certifies that state independently — the same
@@ -2318,7 +2449,10 @@ if (runs('converge')) {
             log(`reconcile after forced append ${round}: tasks.md holds no part of the forced phase${recon.removed ? ' (a partial one was removed)' : ''} — one retry of the forced append, and the loop escalates if that fails too`)
             const retry = await run('forceAppend', `force-append converge ${round} (retry)`, forceAppendPrompt(round, aboveFloor), S.forceAppended, 'Converge')
             const askedRetry = specChangesOf(retry)
-            if (askedRetry.length) return await needsHuman('converge', specWhy(`the retried forced append of converge round ${round}`, askedRetry.length), askedRetry, SPEC_EDIT_RESTART)
+            if (askedRetry.length) {
+              addQuestions('converge', askedRetry)
+              return await needsHuman('converge', specWhy(`the retried forced append of converge round ${round}`, askedRetry.length), askedRetry, SPEC_EDIT_RESTART)
+            }
             if (!retry.appended) {
               return await needsHuman('converge',
                 `the forced convergence round could not append its ${aboveFloor.length} finding(s) to tasks.md, and the loop has tried twice: the first append failed (${failedAppend.note || 'no reason given'}), a reconcile read tasks.md against git and left it with no part of the forced phase in it${recon.removed ? ', having removed a partial one' : ''}, and a second append against that clean file failed as well (${retry.note || 'no reason given'}). tasks.md is in the known state the reconcile reports below — it does not need to be worked out`,
@@ -2395,7 +2529,10 @@ if (runs('converge')) {
     // A question for the author is not an open finding to carry to finish under
     // round-cap: the run would end `done` with it.
     const askedA = specChangesOf(assess)
-    if (askedA.length) return await needsHuman('converge', specWhy(`the assess-only converge round ${assessRound}`, askedA.length), askedA, SPEC_EDIT_RESTART)
+    if (askedA.length) {
+      addQuestions('converge', askedA)
+      return await needsHuman('converge', specWhy(`the assess-only converge round ${assessRound}`, askedA.length), askedA, SPEC_EDIT_RESTART)
+    }
     const findings = Array.isArray(assess.findings) ? assess.findings : []
     await checkDeferrals(findings, assessRound)
     noteDeferred(findings, assessRound)
@@ -2513,5 +2650,6 @@ return {
   implemented: state.implemented,
   finish: finished,
   handoff: finishHandoff,
+  questions: state.questions,
   stagesRun: state.stagesRun,
 }

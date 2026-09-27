@@ -1,6 +1,14 @@
 # spec handoff — authoring record
 
-`spec-handoff-questions`, `spec-handoff-domain`, `spec-handoff-joint`, `build-feature-prepare`. They replace `spec-readiness` (2026-09-24), whose record is the third section of this file.
+`spec-handoff-questions`, `spec-handoff-domain`, `spec-handoff-joint`, `build-feature-prepare`. They replace `spec-readiness` (2026-09-24), whose record is the third section of this file. All four were removed 2026-09-28; their text is at `e267b85`.
+
+## 2026-09-28 — removed; the build's own stages raise the questions
+
+**Decision (owner).** Cut the four skills and build the process from stock spec-kit commands: the domain expert's `/speckit-specify` and `/speckit-clarify`; the technical expert's plan, tasks and analyze, which answer every technical question and collect the rest into one file for the domain expert; the domain expert's `/speckit-clarify` over that file; implement and converge. The owner chose, the same day, the file on the feature branch plus a one-line message as the channel, and two workflows, `plan-feature` and `build-feature`.
+
+**Why the four lost.** They predicted, before any plan existed, what plan, tasks and analyze would stop on, and each prediction was a chance to raise an entry the spec already answered: the owner reported that twice (2026-09-26, 2026-09-27) after five revisions in two days. The stages that would stop now raise the questions themselves, and `/speckit-clarify` excludes a question the spec already answers.
+
+**Where it went.** `build-feature/workflow.mjs` collects the questions (`addQuestions`, `QUESTIONS.md`); `plan-feature` and `build-feature`'s `SKILL.md` and `evidence.md` carry the rule and its grounds. `README.md`, `CLAUDE.md`, `BACKLOG.md`, `converge-feature` and `new-java-backend`'s install hint no longer name the four.
 
 ## 2026-09-27 — third report: entries the spec answers still reach people
 

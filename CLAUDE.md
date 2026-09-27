@@ -18,9 +18,8 @@ Agent Skills distributed with Vercel's `skills` CLI: `skills/<name>/SKILL.md` (l
 
 | Path | What it is |
 | --- | --- |
-| `skills/build-feature/SKILL.md`, `workflow.mjs` | The unattended feature build: one Claude Code Workflow script. Both files are large; read by section |
-| `skills/converge-feature/` | Runs the same script `from: "converge"`, `until: "finish"`; no script of its own |
-| `skills/spec-handoff-questions`, `-domain`, `-joint`, `build-feature-prepare` | The four-stage spec handoff that runs before a build |
+| `skills/build-feature/SKILL.md`, `workflow.mjs` | The unattended feature build: one Claude Code Workflow script, run `from: "implement"` by this skill. Both files are large; read by section |
+| `skills/plan-feature/` | Runs the same script `until: "analyze"` and hands the spec's open questions to the domain expert; no script of its own |
 | `skills/new-java-backend/` | Project creation: lands `dulguun0225/java-backend-template` at a pinned commit, then `specify init --here` |
 | `docs/history/runs.md` | Ledger of real runs, and the harvest procedure that turns a sweep into skill edits |
 | `docs/history/` (other files) | Decision records per skill family |
@@ -50,9 +49,11 @@ Its `CLAUDE.md` holds the full authoring rules; these apply to every skill here:
 
 ### Pipeline today
 
-1. Domain expert: `/speckit-specify`, `/speckit-clarify` on the base branch.
-2. Spec handoff, writing `HANDOFF-QUESTIONS.md` in the feature directory: `/spec-handoff-questions` → `/spec-handoff-domain` (domain expert) → `/spec-handoff-joint` (both experts, only if needed) → `/spec-handoff-questions` again → `/build-feature-prepare` (technical expert). Derived from eight build stops whose cause was a gap in an already-clarified spec.
-3. `/build-feature`, unattended. Headless form: `claude -p "/build-feature" --permission-mode bypassPermissions`.
+Three loops over stock spec-kit commands (owner, 2026-09-28; the four spec handoff skills were removed that day):
+
+1. Domain expert, on the base branch: `/speckit-specify`, `/speckit-clarify` until nothing is left to ask.
+2. Technical expert: `/plan-feature` (plan, review-plan, tasks, analyze). Questions that would change the spec go to `QUESTIONS.md` on the feature branch, with a recommended answer each; the technical expert sends the domain expert the one `/speckit-clarify` line the file holds, the domain expert answers on the base branch and pushes, and `/plan-feature` reruns `from: "review-plan"`. Repeat until a run ends with no question.
+3. Technical expert: `/build-feature` (`from: "implement"`: implement, converge, finish). Headless form: `claude -p "/build-feature" --permission-mode bypassPermissions`.
 
 ### How `build-feature/workflow.mjs` works
 
@@ -60,8 +61,8 @@ Its `CLAUDE.md` holds the full authoring rules; these apply to every skill here:
 - Every agent is a fresh subagent. The plan, tasks, analyze, implement and converge agents invoke the matching spec-kit skill (`speckit-plan`, `speckit-tasks`, `speckit-analyze`, `speckit-implement`, `speckit-converge`). A fresh-context refutation review (`review-plan`) replaces spec-kit's human gate.
 - The Workflow sandbox has no filesystem, no `Date` and no Node APIs; agents do all reads, writes and git. Plain `node --check` rejects the file because of top-level `return`.
 - Loop exits: review and analyze stop when a finding repeats from an earlier round; converge stops at `args.severityFloor` (default `NONE`) or `maxConvergeRounds` (6). At `NONE` a run normally ends at the round cap.
-- Restart with `args.from: "<stage>"` (`args.wall` required); after a spec edit restart `from: "review-plan"`. `resumeFromRunId` replays an interrupted run.
-- Returns `status: "done" | "needs-human"`. On `needs-human` an agent commits `HANDOFF.md` on the feature branch. The invoking session resolves what it can with high confidence, records it in `RESOLUTIONS.md` and restarts; only the rest goes to a person.
+- Restart with `args.from: "<stage>"` (`args.wall` required); after the domain expert answers, `plan-feature` restarts `from: "review-plan"`. `resumeFromRunId` replays an interrupted run.
+- Returns `status: "done" | "needs-human"`. On `needs-human` an agent commits `HANDOFF.md` on the feature branch, and `QUESTIONS.md` beside it when the run holds questions for the domain expert. Review-plan, tasks and analyze collect those questions and the run stops after analyze; converge stops where it finds one; a start after analyze refuses while `QUESTIONS.md` is on the branch. The invoking session resolves what it can with high confidence, never by editing `spec.md`, records it in `RESOLUTIONS.md` and restarts; only the rest goes to a person.
 - Never writes `spec.md`, never commits on the base branch, never rebases or force-pushes, opens no PR. Base branch comes from `args.baseBranch`, else a root `CLAUDE.md` line of exactly `` Base branch: `dev` ``, else `origin/HEAD`, else the single local `main`/`master`/`develop`/`dev`.
 - Run journals are machine-local: `~/.claude/projects/<project path, / replaced by ->/<session id>/workflows/wf_*.json`.
 

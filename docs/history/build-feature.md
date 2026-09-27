@@ -2,6 +2,13 @@
 
 *Moved 2026-09-27 from `docs/history/java-backend-template.md` in `dulguun0225/skills` at `2ab5dc4`, sections unchanged. Later records of these two skills are in their `evidence.md` files and in [runs.md](runs.md).*
 
+
+## `converge-feature` removed — 2026-09-28
+
+**Decision (owner, on reading the split into `plan-feature` and `build-feature`).** `converge-feature` ran `build-feature`'s script `from: "converge"`, `until: "finish"`. `build-feature` now runs the same script `from: "implement"`, and its implement stage skips every phase whose tasks are all ticked, so on an implemented feature the two are the same run at the price of one parse-only `phases` read. On a feature with open tasks `build-feature` is the right one anyway: `converge-feature`'s own text said running it there makes converge append the whole feature as one phase. Its text is at `e267b85`.
+
+**Backlog row closed with it: *a journal that says which skill invoked the run* (opened 2026-09-22).** The row existed because every journal names `build-feature`'s script, so a `converge-feature` run could not be told from `build-feature` with `from: "converge"`; the owner had declined the fix, one argument naming the invoking skill, as a change to the measured system before the first measurement was read. With `converge-feature` gone the two remaining skills are told apart by their arguments — `plan-feature` passes `until: "analyze"`, `build-feature` `from: "implement"` — so nothing is owed. Runs before this date keep the gap: `from: "converge"` in a journal is either skill.
+
 ## `converge-feature`, and the severity floor in `build-feature` — 2026-09-18
 
 *Superseded in its default by "The default severity floor is `NONE`" below: the floor stayed the only stop test, but `LOW` is no longer the default. The ground below stands as the record of why `LOW` was chosen.*
