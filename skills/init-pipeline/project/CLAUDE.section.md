@@ -53,10 +53,11 @@ specified as a new feature with `/speckit-specify`, and that spec states the cha
   capability — so a reader can go and check it. There is no third kind, and a requirement that is merely
   untested is neither of them: it gets a test. `plan.md` and commit messages stay ungated.
 - `.specify/memory/constitution.md` is the spec-kit constitution. Articles I–VI restate what `backend/` already
-  enforces and are not re-planned. Article VII is an optional slot that starts empty: nothing reads whether it
-  is filled, nobody is owed a `/speckit-constitution` run, and it is amended by a commit with its reason when
-  a feature's plan produces a rule that binds more than that feature. `/speckit-plan` reads the file and must
-  not re-plan the stack or the gates; a plan's Technical Context inherits them.
+  enforces and are not re-planned. Article VII holds the rules the project adopts later: each is amended in by
+  a commit with its reason when a feature's plan produces a rule that binds more than that feature and passes
+  the test the constitution sets for an article. A new project's Article VII is empty, and nobody is owed a
+  `/speckit-constitution` run. `/speckit-plan` reads the file and must not re-plan the stack or the gates; a
+  plan's Technical Context inherits them.
 - `.claude/settings.json` pins `worktree.baseRef: head`: an agent run in an isolated worktree starts from the
   branch you are on, not from the base branch. The unattended build works on `build/<NNN>-<name>` ahead of the
   base branch, so a worktree cut from the base branch lacks the files earlier tasks created and the agent

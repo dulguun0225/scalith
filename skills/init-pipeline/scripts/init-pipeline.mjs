@@ -15,7 +15,8 @@
 // --replace-constitution replaces a .specify/memory/constitution.md that is not this skill's (spec-kit ran
 // first); without it such a file is refused. The replaced file stays in git history.
 // --amend prints the final commit as `git commit --amend --no-edit`, for a service created before the pipeline
-// moved out of the template, whose template update, CLAUDE.md edit and this setup go in one unpushed commit. It is
+// moved out of the template, whose template update, CLAUDE.md edit and this setup go in one unpushed commit; the
+// amend keeps that commit's message, so it already describes this setup too. It is
 // refused when HEAD is on a remote branch or on any local branch other than the one checked out.
 // --update writes the files this skill owns and a project never edits -- scripts/check-traceability.mjs,
 // scripts/check-traceability.selftest.mjs, and scripts/fixtures/traceability/ (replaced whole) -- whether or not
@@ -26,11 +27,12 @@
 // project/ directory; the directory is a git repository's root with a clean tree; backend/scripts/wall.mjs
 // exists (the template vendored into backend/, not a standalone service) and runs scripts/wall-checks.txt;
 // backend/ holds no copy of the traceability gate the template carried before the split, and, on a first
-// setup, backend/scripts/wall.mjs, backend/CLAUDE.md and backend/docs/GATES.md do not name it; the root
-// CLAUDE.md exists, holds the base-branch line in its one form, naming a branch other than main, master or
-// HEAD, holds the rule that a session runs `git pull --ff-only` before changing a file, and holds none of the
-// pipeline text the template carried before the split; that branch is checked out; an existing
-// .claude/settings.json is a JSON object.
+// setup, backend/scripts/wall.mjs, backend/CLAUDE.md, backend/docs/GATES.md, backend/README.md and
+// backend/scripts/init.mjs hold none of the text about that gate, spec-kit or the constitution that only the
+// template before the split carried; the root CLAUDE.md exists, holds the base-branch line in its one form,
+// naming a branch other than main, master or HEAD, holds the rule that a session runs `git pull --ff-only`
+// before changing a file, names scripts/wall-checks.txt, and holds none of the pipeline text the template
+// carried before the split; that branch is checked out; an existing .claude/settings.json is a JSON object.
 //
 // What it does not do, on purpose: run spec-kit, or commit. It prints the next step, which runs
 // `specify init`, disables spec-kit's git extension when it is installed and enabled, and commits the result.
@@ -121,9 +123,20 @@ const PULL_RULE_MARK = 'git pull --ff-only';
 // The traceability gate the template carried before the split, which a service that copies template changes by
 // hand can keep after its wall runs scripts/wall-checks.txt: a second, stale copy of the gate this skill installs.
 const OLD_GATE_PATHS = ['backend/scripts/check-traceability.mjs', 'backend/scripts/check-traceability.selftest.mjs', 'backend/scripts/fixtures/traceability/'];
-// Template files that described that gate; the current template's text names it nowhere.
-const OLD_GATE_DOCS = ['backend/scripts/wall.mjs', 'backend/CLAUDE.md', 'backend/docs/GATES.md'];
-const OLD_GATE_MARK = 'check-traceability';
+// Template files that described that gate, spec-kit or the constitution, each with text only the template before
+// the split carried; the current template's text holds none of it.
+const OLD_GATE_DOCS = [
+  { file: 'backend/scripts/wall.mjs', marks: ['check-traceability'] },
+  { file: 'backend/CLAUDE.md', marks: ['check-traceability'] },
+  { file: 'backend/docs/GATES.md', marks: ['check-traceability'] },
+  { file: 'backend/README.md', marks: ['check-traceability', 'fixtures/traceability', 'specify init', 'spec-kit constitution'] },
+  { file: 'backend/scripts/init.mjs', marks: ['spec-kit constitution', "the template's platform articles"] },
+];
+// The template's sentence about the wall's project checks, in the root CLAUDE.md's `backend/` bullet after "is its
+// definition of done."; a root CLAUDE.md from a template before the split lacks it.
+const WALL_CHECKS_MARK = 'wall-checks.txt';
+const WALL_CHECKS_SENTENCE =
+  'After squawk and before `mvn verify` the wall runs each Node script listed one per line in `scripts/wall-checks.txt` here, a path relative to this directory, from this directory and in file order (blank and `#` lines skipped); a missing path or a failing script fails the wall, and no file means no project checks.';
 const pullRule = (base) =>
   `A Claude Code session a person runs in this project keeps \`${base}\` current itself. The person may not know git, so without asking and without mentioning git to them, before changing a file the session updates \`${base}\` from origin: \`git pull --ff-only\`.`;
 
@@ -226,15 +239,19 @@ const outsideSection =
 const flat = outsideSection.join(' ').replace(/\s+/g, ' ');
 const oldText = OLD_PIPELINE_TEXT.filter(({ marker }) => flat.includes(marker));
 const hasPullRule = flat.includes(PULL_RULE_MARK);
-const claudeEdit = oldText.length > 0 || !hasPullRule;
+const namesWallChecks = flat.includes(WALL_CHECKS_MARK);
+const claudeEdit = oldText.length > 0 || !namesWallChecks || !hasPullRule;
 const wallRunsChecks = fs.readFileSync(wall, 'utf8').includes('wall-checks.txt');
 const oldGate = OLD_GATE_PATHS.filter((rel) => fs.existsSync(path.join(root, rel)));
 // Checked on a first setup only: once set up, backend/docs/GATES.md may name the project's own gate.
 const oldGateDocs = opts.update
   ? []
-  : OLD_GATE_DOCS.filter((rel) => {
-      const file = path.join(root, rel);
-      return fs.existsSync(file) && fs.readFileSync(file, 'utf8').includes(OLD_GATE_MARK);
+  : OLD_GATE_DOCS.flatMap(({ file, marks }) => {
+      const at = path.join(root, file);
+      if (!fs.existsSync(at)) return [];
+      const text = fs.readFileSync(at, 'utf8');
+      const found = marks.filter((m) => text.includes(m));
+      return found.length > 0 ? [{ file, found }] : [];
     });
 const templateUpdate = !wallRunsChecks || oldGate.length > 0 || oldGateDocs.length > 0;
 if (templateUpdate || claudeEdit) {
@@ -252,14 +269,24 @@ if (templateUpdate || claudeEdit) {
     for (const rel of oldGate) out.push(`     ${rel}`);
   }
   // A wall that does not run wall-checks.txt is item 1, which names its traceability steps.
-  const docs = oldGateDocs.filter((rel) => wallRunsChecks || rel !== 'backend/scripts/wall.mjs');
+  const docs = oldGateDocs.filter(({ file }) => wallRunsChecks || file !== 'backend/scripts/wall.mjs');
   if (docs.length > 0) {
-    out.push(`${++n}. These still describe that gate (they name ${OLD_GATE_MARK}). Remove what they say about it, as the template has:`);
-    for (const rel of docs) out.push(`     ${rel}`);
+    out.push(`${++n}. These still describe that gate, spec-kit or the constitution, as the template did before the split. Remove what they say about them, as the template has:`);
+    for (const { file, found } of docs) out.push(`     ${file} (names ${found.map((m) => `"${m}"`).join(', ')})`);
   }
-  if (oldText.length > 0) {
-    out.push(`${++n}. CLAUDE.md holds the pipeline text the template used to carry, which the section this skill appends replaces:`);
+  if (oldText.length > 0 || !namesWallChecks) {
+    out.push(
+      oldText.length > 0
+        ? `${++n}. CLAUDE.md holds the pipeline text the template used to carry, which the section this skill appends replaces:`
+        : `${++n}. CLAUDE.md does not say that the wall runs the scripts scripts/wall-checks.txt lists:`,
+    );
     for (const { what } of oldText) out.push(`   - ${what}`);
+    if (!namesWallChecks) {
+      out.push(
+        '   - the `backend/` bullet: after its sentence ending "is its definition of done.", add the sentence the template has there:',
+        `       ${WALL_CHECKS_SENTENCE}`,
+      );
+    }
   }
   if (!hasPullRule) {
     out.push(
@@ -518,7 +545,9 @@ if (opts.update) {
 // enabled: installed when .specify/extensions/git exists, and enabled unless .specify/extensions/.registry parses
 // and marks it enabled: false. Where spec-kit is already initialised the script decides; after `specify init`,
 // which may install it, the printed step decides with the same test.
+// --amend keeps the message of the commit it amends, so no message is set.
 const commit = opts.amend ? 'git commit --amend --no-edit' : 'git commit -m "$m"';
+const message = (m) => (opts.amend ? '' : `m="${m}" && `);
 const REGISTRY_ENABLED =
   "try{process.exit(JSON.parse(require('fs').readFileSync('.specify/extensions/.registry','utf8')).extensions.git.enabled===false?1:0)}catch{}";
 function gitExtensionEnabled() {
@@ -535,12 +564,14 @@ const next = specKitThere
   ? disableNow
     ? [
         'specify extension disable git &&',
-        `m="pipeline: scalith init-pipeline, spec-kit git extension disabled" && git add -A && { git diff --cached --quiet || ${commit}; }`,
+        `${message('pipeline: scalith init-pipeline, spec-kit git extension disabled')}git add -A && { git diff --cached --quiet || ${commit}; }`,
       ]
-    : [`m="pipeline: scalith init-pipeline" && git add -A && { git diff --cached --quiet || ${commit}; }`]
+    : [`${message('pipeline: scalith init-pipeline')}git add -A && { git diff --cached --quiet || ${commit}; }`]
   : [
       'specify init --here --force --non-interactive --integration claude &&',
-      `if [ -d .specify/extensions/git ] && node -e "${REGISTRY_ENABLED}"; then specify extension disable git && m="pipeline: scalith init-pipeline, spec-kit init, git extension disabled"; else m="pipeline: scalith init-pipeline, spec-kit init"; fi &&`,
+      opts.amend
+        ? `if [ -d .specify/extensions/git ] && node -e "${REGISTRY_ENABLED}"; then specify extension disable git; fi &&`
+        : `if [ -d .specify/extensions/git ] && node -e "${REGISTRY_ENABLED}"; then specify extension disable git && m="pipeline: scalith init-pipeline, spec-kit init, git extension disabled"; else m="pipeline: scalith init-pipeline, spec-kit init"; fi &&`,
       `git add -A && { git diff --cached --quiet || ${commit}; }`,
     ];
 console.log(`\nnext, from ${root}, in a POSIX shell (Git Bash on Windows):`);
