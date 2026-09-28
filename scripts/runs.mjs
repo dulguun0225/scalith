@@ -27,8 +27,9 @@
 // this repo did, which is the check-that-fails-on-noise `guardrails-toolchain`
 // bans by name. It is not in `npm run gates` and must not be added to it.
 //
-// A second source, git, for every stop. Each `needs-human` exit off the base
-// branch commits `<featureDir>/HANDOFF.md` in the service repo; the per-stop
+// A second source, git, for every stop. Each `needs-human` exit after preflight
+// commits `<featureDir>/HANDOFF.md` in the service repo, on the base branch during
+// planning and on the build branch during the build; the per-stop
 // block finds that commit, reports its size and the command that reads it in
 // full, and lists the commits between it and the next run on the feature — what
 // was changed before the restart, which no journal records. Its git calls are
@@ -292,8 +293,9 @@ const runs = allRuns.filter((r) => inWindow(r) && (!onlyRun || r.runId.includes(
 // Stops — what each needs-human exit left in git, and what changed after it
 // ---------------------------------------------------------------------------
 
-// A second source beside the journals. Every needs-human exit with a resolved
-// feature directory, off the base branch, commits `<featureDir>/HANDOFF.md` with
+// A second source beside the journals. Every needs-human exit after preflight — on
+// the base branch during planning, on the build branch during the build — commits
+// `<featureDir>/HANDOFF.md` with
 // the subject below, rendering the return value's findings item by item. Its
 // content is the journal's `result.detail`, not more, but it is committed, so it survives a
 // cleared projects directory and is readable on any clone. The commits on the
@@ -392,11 +394,11 @@ function findHandoff(r, path) {
   if (hits.length) return { commit: commitInfo(r.repoPath, hits[0].sha), via: `git search by path, subject and run window${hits.length > 1 ? ` (${hits.length} candidates; the one inside the run's window, else the latest)` : ""}` };
   if (rec && rec.written === false) return { none: `handoff not written: ${String(rec.note || "no reason given").slice(0, 160)}` };
   const base = r.baseBranch || repoCheck(r.repoPath).originHead;
-  if (base && r.branch === base) return { none: `on base branch \`${base}\`; no handoff commit found` };
+  if (base && r.branch === base) return { none: `on base branch \`${base}\`, where a preflight exit commits no handoff; no handoff commit found` };
   return { none: rec ? "the journal records a handoff with no sha and git holds no matching commit" : "the journal holds no handoff record (older runs wrote none) and git holds no matching commit" };
 }
 
-/** The ref the resolution window is read on: the feature branch if it holds the handoff, else any ref that does. */
+/** The ref the resolution window is read on: the run's branch if it holds the handoff, else any ref that does (a landed build branch is deleted). */
 function resolutionRef(repo, branch, sha) {
   const tries = branch ? [`refs/heads/${branch}`, `refs/remotes/origin/${branch}`] : [];
   for (const ref of tries) {
@@ -755,7 +757,7 @@ function textReport() {
     if (rs?.none) console.log(`    resolution: unreadable — ${rs.none}`);
     else if (rs) {
       console.log(
-        `    resolution: ${rs.commits.length} commit(s) on ${rs.ref}${rs.refIsFallback ? " (feature branch not in this clone; a ref holding the handoff)" : ""}, up to ${rs.until}; ` +
+        `    resolution: ${rs.commits.length} commit(s) on ${rs.ref}${rs.refIsFallback ? " (the run's branch is not in this clone; a ref holding the handoff)" : ""}, up to ${rs.until}; ` +
           `RESOLUTIONS.md ${rs.resolutionsFile ? "present" : "absent"} at the window's end`,
       );
       for (const c of rs.commits.slice(0, MAX_LISTED_COMMITS)) {
@@ -825,8 +827,8 @@ function textReport() {
     RESOLUTIONS.md, where one was written, says that
   - whether a commit in a resolution window is resolution work. The window is
     every non-merge commit on the ref between the handoff and the next run's
-    start, by time; on a fallback ref, or with no later run, it can hold
-    unrelated work
+    start, by time; on the base branch, on a fallback ref, or with no later
+    run, it can hold unrelated work
   - a decision made in conversation and never committed. Git holds only what
     was committed; the journal holds only what the run returned
   - the prevention target of a stop: which earlier stage should have caught it

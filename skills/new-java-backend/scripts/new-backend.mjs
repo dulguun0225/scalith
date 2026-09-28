@@ -30,7 +30,7 @@ import { parseArgs } from 'node:util';
 
 const TEMPLATE_URL = process.env.TEMPLATE_URL || 'https://github.com/dulguun0225/java-backend-template.git';
 // The pinned template commit. Move it deliberately, in a commit that says which gate change it brings in.
-const DEFAULT_REF = '0c0960c904ea05a3465968442752423eccd2ae68';
+const DEFAULT_REF = '1ddf6eedd83a2e138099ad6ca245671ccccbf197';
 
 const [major] = process.versions.node.split('.').map(Number);
 if (major < 22) die(`node ${process.versions.node} is too old; this script needs 22 or newer`);
@@ -148,11 +148,14 @@ try {
 
   const next = [`gh repo create <org>/${name} --private --source=. --push && git push -u origin main`];
   next.push(`gh repo edit <org>/${name} --default-branch dev     # work happens on dev; main takes pull requests from dev only`);
-  if (mode === 'vendored') next.push('node scripts/apply-ruleset.mjs     # PR + backend + frontend checks required on dev and main');
+  if (mode === 'vendored') next.push('node scripts/apply-ruleset.mjs     # main: pull requests from dev, with the checks; dev: direct pushes, no deletion, no force-push');
   next.push('npx skills add dulguun0225/skills -a claude-code -y     # the engineering-decision skills');
   next.push('npx skills add dulguun0225/scalith -a claude-code -y    # plan-feature, build-feature');
   // No /speckit.* line here: a printed step is read as owed, and at scaffold time Article VII has nothing to hold.
-  if (mode === 'vendored') next.push('specify init --here               # optional; .specify/memory/constitution.md is pre-filled and survives it');
+  // spec-kit's git extension, which `specify init` installs, has a mandatory before_specify
+  // hook that makes and checks out a <NNN>-<name> branch; a service works on dev, so it is
+  // disabled at once, and the result committed.
+  if (mode === 'vendored') next.push('specify init --here && specify extension disable git && git add -A && git commit -m "spec-kit: init, git extension disabled"   # the constitution is pre-filled and survives init; the git extension would move /speckit-specify off dev');
   if (!verify) next.push(`(cd ${service} && mvn -Pcodegen generate-sources && mvn spotless:apply && mvn verify)   # skipped above; run before the first push`);
   console.log(`created ${dir} (${mode}): package ${pkg}, artifact ${name}, template ${sha} — ${verified}`);
   console.log("next, each outside this directory's control and so not done here:");
