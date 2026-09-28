@@ -57,8 +57,8 @@ come before spec-kit:
    `backend/` at its pinned commit and makes the init commit.
 2. Invoke `/init-pipeline`. It copies the spec-kit constitution, the
    traceability gate and the project rules into the project, runs
-   `specify init --here`, disables spec-kit's git extension when it is present
-   (older spec-kit installs it by default, 1.0.8 only on `--extension git`;
+   `specify init --here`, disables spec-kit's git extension when it is installed
+   and enabled (older spec-kit installs it by default, 1.0.8 only on `--extension git`;
    its hook moves `/speckit-specify` onto a new branch), and commits.
 3. Nothing for the constitution. Articles I–VI arrive from `/init-pipeline` and
    restate what the backend wall enforces; they are not re-planned. Article VII

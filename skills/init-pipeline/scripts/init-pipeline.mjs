@@ -15,7 +15,7 @@
 // --replace-constitution replaces a .specify/memory/constitution.md that is not this skill's (spec-kit ran
 // first); without it such a file is refused. The replaced file stays in git history.
 // --amend prints the final commit as `git commit --amend --no-edit`, for a service created before the pipeline
-// moved out of the template, whose template pull, CLAUDE.md edit and this setup go in one unpushed commit. It is
+// moved out of the template, whose template update, CLAUDE.md edit and this setup go in one unpushed commit. It is
 // refused when HEAD is on a remote branch or on any local branch other than the one checked out.
 // --update writes the files this skill owns and a project never edits -- scripts/check-traceability.mjs,
 // scripts/check-traceability.selftest.mjs, and scripts/fixtures/traceability/ (replaced whole) -- whether or not
@@ -24,15 +24,17 @@
 //
 // Preconditions, all checked before anything is written: every file this skill installs is present under its
 // project/ directory; the directory is a git repository's root with a clean tree; backend/scripts/wall.mjs
-// exists (the template vendored into backend/, not a standalone service) and runs scripts/wall-checks.txt; the
-// root CLAUDE.md exists, holds the base-branch line in its one form, naming a branch other than main, master or
+// exists (the template vendored into backend/, not a standalone service) and runs scripts/wall-checks.txt;
+// backend/ holds no copy of the traceability gate the template carried before the split, and, on a first
+// setup, backend/scripts/wall.mjs, backend/CLAUDE.md and backend/docs/GATES.md do not name it; the root
+// CLAUDE.md exists, holds the base-branch line in its one form, naming a branch other than main, master or
 // HEAD, holds the rule that a session runs `git pull --ff-only` before changing a file, and holds none of the
 // pipeline text the template carried before the split; that branch is checked out; an existing
 // .claude/settings.json is a JSON object.
 //
 // What it does not do, on purpose: run spec-kit, or commit. It prints the next step, which runs
-// `specify init`, disables spec-kit's git extension when it is installed, and commits the result. That step is
-// POSIX shell: on Windows, run it in Git Bash.
+// `specify init`, disables spec-kit's git extension when it is installed and enabled, and commits the result.
+// That step is POSIX shell: on Windows, run it in Git Bash.
 //
 // Node, standard library only, 22 or newer: the runtime `npx skills add` already needed to install this skill.
 // Needs git on PATH.
@@ -77,6 +79,10 @@ const TEMPLATE_URL = 'https://github.com/dulguun0225/java-backend-template.git';
 // by a line only it holds. The section this skill appends repeats some of them and is left out of the search.
 const OLD_PIPELINE_TEXT = [
   {
+    marker: 'names the trunk, and `build-feature` reads it',
+    what: 'the sentence "The line above names the trunk, and `build-feature` reads it as written, in that one form, unindented and once.": replace it with "The line above names the trunk, and tools read it as written, in that one form, unindented and once."',
+  },
+  {
     marker: 'feature branches are cut from',
     what: 'the sentence "The line above names the trunk: feature branches are cut from ... and merged back into it, and `build-feature` reads it as written, in that one form, unindented and once.": replace it with "The line above names the trunk, and tools read it as written, in that one form, unindented and once."',
   },
@@ -112,6 +118,12 @@ const OLD_PIPELINE_TEXT = [
 // The rule the appended section refers to ("keeps the base branch current as described above"). A root CLAUDE.md
 // from a template before 31009fd lacks it; the paragraph to add is the current template's.
 const PULL_RULE_MARK = 'git pull --ff-only';
+// The traceability gate the template carried before the split, which a service that copies template changes by
+// hand can keep after its wall runs scripts/wall-checks.txt: a second, stale copy of the gate this skill installs.
+const OLD_GATE_PATHS = ['backend/scripts/check-traceability.mjs', 'backend/scripts/check-traceability.selftest.mjs', 'backend/scripts/fixtures/traceability/'];
+// Template files that described that gate; the current template's text names it nowhere.
+const OLD_GATE_DOCS = ['backend/scripts/wall.mjs', 'backend/CLAUDE.md', 'backend/docs/GATES.md'];
+const OLD_GATE_MARK = 'check-traceability';
 const pullRule = (base) =>
   `A Claude Code session a person runs in this project keeps \`${base}\` current itself. The person may not know git, so without asking and without mentioning git to them, before changing a file the session updates \`${base}\` from origin: \`git pull --ff-only\`.`;
 
@@ -216,14 +228,34 @@ const oldText = OLD_PIPELINE_TEXT.filter(({ marker }) => flat.includes(marker));
 const hasPullRule = flat.includes(PULL_RULE_MARK);
 const claudeEdit = oldText.length > 0 || !hasPullRule;
 const wallRunsChecks = fs.readFileSync(wall, 'utf8').includes('wall-checks.txt');
-if (!wallRunsChecks || claudeEdit) {
+const oldGate = OLD_GATE_PATHS.filter((rel) => fs.existsSync(path.join(root, rel)));
+// Checked on a first setup only: once set up, backend/docs/GATES.md may name the project's own gate.
+const oldGateDocs = opts.update
+  ? []
+  : OLD_GATE_DOCS.filter((rel) => {
+      const file = path.join(root, rel);
+      return fs.existsSync(file) && fs.readFileSync(file, 'utf8').includes(OLD_GATE_MARK);
+    });
+const templateUpdate = !wallRunsChecks || oldGate.length > 0 || oldGateDocs.length > 0;
+if (templateUpdate || claudeEdit) {
   const out = ['this service was created before the pipeline moved out of java-backend-template; nothing was written.'];
   let n = 0;
   if (!wallRunsChecks) {
     out.push(
-      `${++n}. backend/scripts/wall.mjs does not run scripts/wall-checks.txt, so the gate this skill installs would never run. Pull the template first:`,
+      `${++n}. backend/scripts/wall.mjs does not run scripts/wall-checks.txt, so the gate this skill installs would never run. Bring backend/ up to the template first, one of two ways:`,
       `     git subtree pull --prefix backend ${TEMPLATE_URL} main --squash`,
+      '   or, in a service that copies template changes by hand, copy the template\'s changes since the last commit it copied; at least the projectChecks() step in backend/scripts/wall.mjs, which replaces its two traceability steps, and the deletion of the old gate files.',
     );
+  }
+  if (oldGate.length > 0) {
+    out.push(`${++n}. backend/ still holds the traceability gate the template used to carry, a second copy of the one this skill installs. Delete these, as the template has:`);
+    for (const rel of oldGate) out.push(`     ${rel}`);
+  }
+  // A wall that does not run wall-checks.txt is item 1, which names its traceability steps.
+  const docs = oldGateDocs.filter((rel) => wallRunsChecks || rel !== 'backend/scripts/wall.mjs');
+  if (docs.length > 0) {
+    out.push(`${++n}. These still describe that gate (they name ${OLD_GATE_MARK}). Remove what they say about it, as the template has:`);
+    for (const rel of docs) out.push(`     ${rel}`);
   }
   if (oldText.length > 0) {
     out.push(`${++n}. CLAUDE.md holds the pipeline text the template used to carry, which the section this skill appends replaces:`);
@@ -236,10 +268,10 @@ if (!wallRunsChecks || claudeEdit) {
     );
   }
   out.push(
-    !wallRunsChecks
+    templateUpdate
       ? claudeEdit
-        ? 'The template pull, the CLAUDE.md edit and this skill\'s setup go in one commit, pushed only when complete: after the pull, fold the CLAUDE.md edit into the pull\'s commit with `git commit --amend --no-edit --all`, then run this again with --amend.'
-        : 'The template pull and this skill\'s setup go in one commit, pushed only when complete: after the pull, run this again with --amend.'
+        ? 'The template update, the CLAUDE.md edit and this skill\'s setup go in one commit, pushed only when complete: commit the template update and the CLAUDE.md edit together (after a subtree pull, fold the edit into its commit with `git commit --amend --no-edit --all`), push nothing, then run this again with --amend.'
+        : 'The template update and this skill\'s setup go in one commit, pushed only when complete: commit the template update (a subtree pull commits it itself), push nothing, then run this again with --amend.'
       : 'The CLAUDE.md edit and this skill\'s setup go in one commit: commit the edit, push nothing, and run this again with --amend.',
   );
   die(out.join('\n'));
@@ -482,25 +514,41 @@ if (opts.update) {
 
 // spec-kit's git extension has a mandatory before_specify hook that makes and checks out a <NNN>-<name> branch
 // for every /speckit-specify, which would move the domain expert off the base branch. spec-kit 1.0.8 installs it
-// only on `--extension git`; older releases installed it by default. It is disabled wherever it is installed.
+// only on `--extension git`; older releases installed it by default. It is disabled wherever it is installed and
+// enabled: installed when .specify/extensions/git exists, and enabled unless .specify/extensions/.registry parses
+// and marks it enabled: false. Where spec-kit is already initialised the script decides; after `specify init`,
+// which may install it, the printed step decides with the same test.
 const commit = opts.amend ? 'git commit --amend --no-edit' : 'git commit -m "$m"';
-const disableGit = (withGit, without) =>
-  `if [ -d .specify/extensions/git ]; then specify extension disable git && m="${withGit}"; else m="${without}"; fi &&`;
+const REGISTRY_ENABLED =
+  "try{process.exit(JSON.parse(require('fs').readFileSync('.specify/extensions/.registry','utf8')).extensions.git.enabled===false?1:0)}catch{}";
+function gitExtensionEnabled() {
+  if (!fs.existsSync(path.join(root, '.specify', 'extensions', 'git'))) return false;
+  try {
+    return JSON.parse(fs.readFileSync(path.join(root, '.specify', 'extensions', '.registry'), 'utf8')).extensions.git.enabled !== false;
+  } catch {
+    return true;
+  }
+}
 const specKitThere = fs.existsSync(path.join(root, '.specify', 'templates'));
+const disableNow = specKitThere && gitExtensionEnabled();
 const next = specKitThere
-  ? [
-      disableGit('pipeline: scalith init-pipeline, spec-kit git extension disabled', 'pipeline: scalith init-pipeline'),
-      `git add -A && { git diff --cached --quiet || ${commit}; }`,
-    ]
+  ? disableNow
+    ? [
+        'specify extension disable git &&',
+        `m="pipeline: scalith init-pipeline, spec-kit git extension disabled" && git add -A && { git diff --cached --quiet || ${commit}; }`,
+      ]
+    : [`m="pipeline: scalith init-pipeline" && git add -A && { git diff --cached --quiet || ${commit}; }`]
   : [
       'specify init --here --force --non-interactive --integration claude &&',
-      disableGit('pipeline: scalith init-pipeline, spec-kit init, git extension disabled', 'pipeline: scalith init-pipeline, spec-kit init'),
+      `if [ -d .specify/extensions/git ] && node -e "${REGISTRY_ENABLED}"; then specify extension disable git && m="pipeline: scalith init-pipeline, spec-kit init, git extension disabled"; else m="pipeline: scalith init-pipeline, spec-kit init"; fi &&`,
       `git add -A && { git diff --cached --quiet || ${commit}; }`,
     ];
 console.log(`\nnext, from ${root}, in a POSIX shell (Git Bash on Windows):`);
 for (const l of next) console.log(`  ${l}`);
 console.log(
   specKitThere
-    ? '  # spec-kit is already initialised here; its git extension, where installed, would move /speckit-specify off the base branch'
+    ? disableNow
+      ? '  # spec-kit is already initialised here; its git extension, enabled, would move /speckit-specify off the base branch'
+      : '  # spec-kit is already initialised here, and its git extension is not installed or already disabled'
     : '  # --force only lets init run in a non-empty directory: the files installed above are kept; its git extension, where installed, would move /speckit-specify off the base branch',
 );
