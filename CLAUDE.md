@@ -20,13 +20,14 @@ Agent Skills distributed with Vercel's `skills` CLI, one `skills/<name>/SKILL.md
 | --- | --- |
 | `skills/build-feature/SKILL.md`, `workflow.mjs` | The unattended feature build: one Claude Code Workflow script, run `from: "implement"` by this skill. Both files are large; read by section |
 | `skills/plan-feature/` | Runs the same script `until: "analyze"` and hands the spec's open questions to the domain expert; no script of its own |
-| `skills/new-java-backend/` | Project creation: lands `dulguun0225/java-backend-template` at a pinned commit, then `specify init --here` |
+| `skills/init-pipeline/` | Sets up a project `/new-java-backend` (in `../skills`) created for the pipeline: copies `project/` (constitution, `.claude/settings.json`, the traceability gate, `scripts/wall-checks.txt`) into it without overwriting, except that an existing `.claude/settings.json` gets `worktree.baseRef` when missing and an existing `scripts/wall-checks.txt` gets its missing lines; appends `CLAUDE.section.md` to its `CLAUDE.md`, then `specify init`; `--update` refreshes the gate in an existing project |
 | `BACKLOG.md` | Owed work |
 
 ```bash
 mise trust && mise install && npm ci   # once per machine; npm ci before any script
 npm run check          # skills the CLI discovers; run after any frontmatter edit
-npm run gates          # dangling pointers, description budget; CI runs check + gates
+npm run gates          # dangling pointers, description budget
+node skills/init-pipeline/project/scripts/check-traceability.selftest.mjs   # self-test of the gate init-pipeline installs; CI runs check, gates and this
 npm run runs -- --repo <abs path> --since <date>   # report from Workflow run journals in service repos
 npm run try -- <name>  # run one skill from the working tree
 ```
@@ -62,7 +63,9 @@ Three loops over stock spec-kit commands:
 
 ### What a target repo must have
 
-`.specify/` with `.specify/memory/constitution.md`; `.claude/skills/speckit-*/`; a root `CLAUDE.md` naming the definition-of-done command and `` Base branch: `dev` ``; a clean tree and an `origin` remote. `dev` takes direct pushes: the template's ruleset forbids only its deletion and a force-push, and an existing service re-runs `node scripts/apply-ruleset.mjs` to get it. spec-kit's `git` extension is disabled (`specify extension disable git`, committed), because its mandatory `before_specify` hook moves `/speckit-specify` onto an `<NNN>-<name>` branch. Prompts assume `java-backend-template` vendored into `backend/`.
+Created by `/new-java-backend` from `dulguun0225/skills`, then set up by `/init-pipeline`, which provides the constitution and the traceability gate: `node scripts/check-traceability.mjs` at the project root, run by the backend wall through `scripts/wall-checks.txt`.
+
+`.specify/` with `.specify/memory/constitution.md`; `.claude/skills/speckit-*/`; a root `CLAUDE.md` naming the definition-of-done command and `` Base branch: `dev` ``; a clean tree and an `origin` remote. `dev` takes direct pushes: the template's ruleset forbids only its deletion and a force-push, and an existing service re-runs `node scripts/apply-ruleset.mjs` to get it. spec-kit's `git` extension is disabled where present (`specify extension disable git`, committed): spec-kit 1.0.8 installs it only with `specify init --extension git`, older releases by default, and its mandatory `before_specify` hook moves `/speckit-specify` onto an `<NNN>-<name>` branch. Prompts assume `java-backend-template` vendored into `backend/`.
 
 ### Limits
 

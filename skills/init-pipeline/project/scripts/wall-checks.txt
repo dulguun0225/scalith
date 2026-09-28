@@ -1,0 +1,4 @@
+# Run in order by backend/scripts/wall.mjs, from the project root, one Node script path per line.
+# The self-test runs first: a gate that cannot fail proves nothing, so its pass is what makes the gate's verdict worth reading.
+scripts/check-traceability.selftest.mjs
+scripts/check-traceability.mjs

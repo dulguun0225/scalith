@@ -1465,6 +1465,10 @@ async function reviewLoop({ kind, group, reviewer, fixer, reviewPrompt, fixPromp
 // until the change is reverted on the base. Before the branch exists, a base spec other
 // than the one the plan review recorded restarts the run at review-plan.
 //
+// Every start, full or not, checks that the traceability gate and its self-test exist on
+// the base and that scripts/wall-checks.txt lists both, so a build never lands with a
+// wall that runs no gate.
+//
 // Then spec-kit is made to agree: its common.sh resolves the feature from
 // SPECIFY_FEATURE_DIRECTORY, then .specify/feature.json, and never from git, so a stale
 // feature.json sends /speckit-plan into the wrong directory. Writing that git-ignored
@@ -1619,6 +1623,12 @@ const codeList = names => names.map(n => `\`${n}\``).join(' and ')
   // the base branch by then; the base branch's commit on a build start, which may stand
   // on the build branch and checks nothing out.
   const at = f => (buildStart ? `\`git show ${base}:<featureDir>/${f}\`` : `\`cat <featureDir>/${f}\``)
+  // Checked on every start, not only a full one: a service that pulls a template without
+  // the gate and never runs /init-pipeline would otherwise build and land with a wall that
+  // runs no traceability gate. Read where the base's files are read.
+  const gateFile = f => (buildStart ? `\`git cat-file -e ${base}:${f}\`` : `\`test -f ${f}\``)
+  const listed = re => (buildStart ? `\`git show ${base}:scripts/wall-checks.txt | grep -qxE '${re}'\`` : `\`grep -qxE '${re}' scripts/wall-checks.txt\``)
+  const gateCheck = `${buildStart ? `On \`${base}\`, ` : ''}\`scripts/check-traceability.mjs\` and \`scripts/check-traceability.selftest.mjs\` must exist at the project root (${gateFile('scripts/check-traceability.mjs')} and ${gateFile('scripts/check-traceability.selftest.mjs')} succeed), and \`scripts/wall-checks.txt\` must list each on a line of its own (${listed('(\\./)?scripts/check-traceability\\.mjs[[:space:]]*')} and ${listed('(\\./)?scripts/check-traceability\\.selftest\\.mjs[[:space:]]*')} succeed), so the definition of done runs the traceability gate and its self-test; a template pull can drop it silently. Any missing one is a problem whose fix is \`/init-pipeline\`, run on \`${base}\`.`
   const p = await run('preflight', full ? 'preflight' : 'preflight (discovery)', [
     UNATTENDED,
     buildStart
@@ -1664,11 +1674,12 @@ const codeList = names => names.map(n => `\`${n}\``).join(' and ')
     `7. Make spec-kit agree with the feature you resolved. Its own scripts resolve the feature from the \`SPECIFY_FEATURE_DIRECTORY\` environment variable, then from \`.specify/feature.json\`, and from nothing else — never from the branch name — so a stale file sends every later stage into another feature's directory. Run \`git check-ignore -q .specify/feature.json\`. Exit 0 (the file is git-ignored, which is how spec-kit ships it): if its \`feature_directory\` is not the directory you resolved, write the file as exactly \`{"feature_directory":"<the resolved directory>"}\` and return \`featureJson\` "written"; if it already names it, write nothing and return "unchanged". A non-zero exit means the repository tracks the file: leave it untouched, return "tracked", and add no problem — the run carries the environment variable to its stages instead.`,
     full ? '8. `grep -n "\\[NEEDS CLARIFICATION" <featureDir>/spec.md` — return every hit in `clarifications`, quoted with its line number. Those markers are the spec author\'s to resolve with `/speckit-clarify`, and this run never answers one.' : '',
     full ? '9. `.specify/` must exist with `.specify/memory/constitution.md`, and `.claude/skills/speckit-plan/SKILL.md`, `speckit-tasks`, `speckit-analyze`, `speckit-implement`, `speckit-converge` must all be installed. Any missing one is a problem.' : '',
+    `${full ? 10 : 8}. ${gateCheck}`,
     full
       ? (cfg.wall
-        ? `10. The definition-of-done command is \`${cfg.wall}\`. Check that its executable and script exist; do not run it. Return it as \`wall\`.`
-        : `10. Find the project's definition-of-done command: read CLAUDE.md at the repo root (and the backend's CLAUDE.md if there is one) for the command it names as the definition of done or as "exactly what CI runs" — for example \`node backend/scripts/wall.mjs\`. Return it as \`wall\`. If no such command is named, return an empty string and add a problem saying so.`)
-      : `8. Return \`wall\` as \`${cfg.wall || ''}\` and \`clarifications\` empty: the checks this run skipped are not yours to redo.`,
+        ? `11. The definition-of-done command is \`${cfg.wall}\`. Check that its executable and script exist; do not run it. Return it as \`wall\`.`
+        : `11. Find the project's definition-of-done command: read CLAUDE.md at the repo root (and the backend's CLAUDE.md if there is one) for the command it names as the definition of done or as "exactly what CI runs" — for example \`node backend/scripts/wall.mjs\`. Return it as \`wall\`. If no such command is named, return an empty string and add a problem saying so.`)
+      : `9. Return \`wall\` as \`${cfg.wall || ''}\` and \`clarifications\` empty: the checks this run skipped are not yours to redo.`,
     'Return ok=true only when there are no problems.',
   ].filter(Boolean).join('\n'), S.preflight, 'Preflight')
   state.branch = p.branch || state.branch
@@ -1719,7 +1730,7 @@ const codeList = names => names.map(n => `\`${n}\``).join(' and ')
         : ''}`,
       { missingInputs: paths, from: cfg.from, restartFrom: restart, problems: p.problems || [] }, restart)
   }
-  if (!p.ok) return await needsHuman('preflight', full ? 'the repository is not ready' : 'the repository does not match what this restart was given', p.problems)
+  if (!p.ok) return await needsHuman('preflight', full ? 'the repository is not ready' : 'the repository is not ready, or does not match what this restart was given', p.problems)
   if (!p.featureDir) {
     return await needsHuman('preflight', cfg.featureDir
       ? `\`${cfg.featureDir}\` is not a feature directory this run can work on: it does not exist, or it holds no readable, non-empty spec.md. A feature is specified before this run starts — /speckit-specify and /speckit-clarify are the author's, not this script's`
