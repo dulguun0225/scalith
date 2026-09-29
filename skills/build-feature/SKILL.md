@@ -80,23 +80,25 @@ Optional `args`, all with a default: `featureDir`, `branch` (the build branch's 
 
 ## Each stage runs on the tier it earns
 
-**Take the model and effort of every stage from the `TIERS` table in `workflow.mjs`; every row is Opus at low, medium or high effort. Change a row for one run with `args.tiers`, never by editing the table.** The model is the alias `opus`, not a pinned id, because `agent()`'s `model` takes aliases. A row on any other model, or on `xhigh` or `max`, fails the run before its first agent starts.
+**Take the model and effort of every stage from the `TIERS` table in `workflow.mjs`; every row is Opus or Sonnet at low, medium, high or xhigh effort. Change a row for one run with `args.tiers`, never by editing the table.** The models are the aliases `opus` and `sonnet`, not pinned ids, because `agent()`'s `model` takes aliases; they resolve to Opus 5.5 and Sonnet 5.5. A row on any other model, or on `max`, fails the run before its first agent starts.
 
 | Stage | Tier | Why this tier |
 |---|---|---|
-| preflight, phases, finish | Opus low | shell commands and parsing; the return value is a list of facts, and the one judgment preflight meets (several candidate directories) is one it refuses |
-| handoff | Opus low | writes files whose whole text the script hands it, commits, pushes |
-| plan | Opus high | the one decision-heavy pass; every later stage inherits its errors |
-| review-plan | Opus high | the refutation that stands in for the human, at the same effort as the pass it refutes |
-| fix-plan, remediate (critical) | Opus medium | edits that may reach the constitution, and the two rows that decide a finding needs a spec change |
-| tasks, analyze, remediate | Opus medium | decomposition and cross-checking of artifacts a high-effort review already passed |
-| implement, one agent per phase | Opus medium | a bounded context per phase; the wall is the check |
-| converge | Opus medium | reads the whole implementation and grades every gap on `/speckit-converge`'s Step 5 scale; raise it with `args.tiers` when converge misses a gap a person can see |
+| check-deferrals | Sonnet low | a text search of `spec.md` for each deferral quotation |
+| preflight, finish | Sonnet medium | long step-by-step git and shell checklists; the return value is a list of facts, the one judgment preflight meets (several candidate directories) is one it refuses, and origin takes finish's landing only as a fast-forward |
+| phases | Sonnet medium | parses `tasks.md`; a reader at low effort can stop short on a long file |
+| handoff | Sonnet medium | writes files whose whole text the script hands it, commits, pushes; also pushes the base branch after planning |
+| plan | Opus xhigh | the one decision-heavy pass; every later stage inherits its errors |
+| review-plan | Opus xhigh | the refutation that stands in for the human, at the same effort as the pass it refutes |
+| fix-plan, remediate (critical) | Opus high | edits that may reach the constitution, and the two rows that decide a finding needs a spec change; a fix that misses sends another round to an xhigh review |
+| analyze | Opus high | cross-checks spec, plan and tasks and grades what it finds, above the medium passes that wrote the tasks; the last check before the build |
+| tasks, remediate | Opus medium | decomposition, and repairs that analyze checks again |
+| implement, one agent per phase | Opus medium | a bounded context per phase; the wall and converge are the checks |
+| converge | Opus high | reads the whole implementation and grades every gap on `/speckit-converge`'s Step 5 scale, above the implement pass it checks; raise it to xhigh with `args.tiers` when converge misses a gap a person can see |
 | reconcile-tasks | Opus medium | brings `tasks.md` to a known state after a failed forced append; must return `unsure` rather than guess, and its verdict is certified by the `phases` row |
-| check-deferrals | Opus low | a text search of `spec.md` for each deferral quotation |
 | force-append | Opus medium | writes one task per finding from findings, not from a finished document, so a paraphrase becomes a task that closes on something else |
 
-Low goes to stages whose output is facts or a document the script rendered; medium to stages that write an artifact or code, each reviewed by a higher-effort pass or checked by the wall; high to plan and its refutation only, the two stages the rest of the run derives from.
+Sonnet goes to stages that run steps the prompt spells out and judge nothing: low for a single search, medium for a checklist or a verbatim write. Opus goes to every stage that judges or writes an artifact or code: medium where a higher-effort pass or the wall checks the output; high to the checks and to the fixes of plan-level findings; xhigh to plan and its refutation only, the two stages the rest of the run derives from.
 
 ## A gate is a fresh-context refutation, not a human
 
@@ -142,7 +144,7 @@ Low goes to stages whose output is facts or a document the script rendered; medi
 
 ## A needs-human exit leaves a file behind
 
-**Every `needs-human` exit after preflight writes `HANDOFF.md` into the feature directory, commits it where the run stands — the base branch during planning, the build branch during the build — and pushes it when `push` is true, before it returns** — with `QUESTIONS.md` beside it when the run holds questions for the domain expert. A `done` return whose questions left open changed rewrites `QUESTIONS.md` alone. The file starts with the questions table when the run holds questions, then says that the run stopped and who reads it first, then carries the stage, the reason, the full findings item by item, the branch, the round counts, the stages run, the definition-of-done command, the severity floor, the date, the arguments that restart the run, and where the run journal is kept. **It names no journal path:** the script cannot see its own run id; the run id is on the Workflow tool result, and the session records it in `RESOLUTIONS.md`. The document is rendered in `workflow.mjs` and handed finished to one Opus-low agent, with one placeholder, the date, so the agent cannot paraphrase or drop a finding. The commit is by pathspec, those files only, because the tree may hold the run's failing work.
+**Every `needs-human` exit after preflight writes `HANDOFF.md` into the feature directory, commits it where the run stands — the base branch during planning, the build branch during the build — and pushes it when `push` is true, before it returns** — with `QUESTIONS.md` beside it when the run holds questions for the domain expert. A `done` return whose questions left open changed rewrites `QUESTIONS.md` alone. The file starts with the questions table when the run holds questions, then says that the run stopped and who reads it first, then carries the stage, the reason, the full findings item by item, the branch, the round counts, the stages run, the definition-of-done command, the severity floor, the date, the arguments that restart the run, and where the run journal is kept. **It names no journal path:** the script cannot see its own run id; the run id is on the Workflow tool result, and the session records it in `RESOLUTIONS.md`. The document is rendered in `workflow.mjs` and handed finished to one Sonnet agent, with one placeholder, the date, so the agent cannot paraphrase or drop a finding. The commit is by pathspec, those files only, because the tree may hold the run's failing work.
 
 **A failed handoff never costs the run its verdict:** the full payload stays on the return value, with `handoff.written: false` and the reason in `handoff.note`. **An exit before a base branch or a feature directory is resolved, every preflight exit, an exit on a detached HEAD, a build stop before the run is on its build branch, and an exit whose planning commits could not be pushed write nothing** and say so on the return. A stop at `finish` gets the same file, on the build branch that did not land, on a return that keeps its own shape.
 

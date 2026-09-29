@@ -80,11 +80,15 @@ export const meta = {
 }
 
 // ---------------------------------------------------------------------------
-// Tiers. The roster is Opus at low, medium or high effort; tier() refuses any other
-// model or effort, from this table or args.tiers, before the first agent starts.
-// `opus` is an alias, so it follows the newest Opus. Per-row reasons are in SKILL.md.
+// Tiers. The roster is Opus or Sonnet at low, medium, high or xhigh effort; tier()
+// refuses any other model or effort, from this table or args.tiers, before the first
+// agent starts. `opus` and `sonnet` are aliases: they resolve to Opus 5.5 and Sonnet 5.5
+// and follow the newest release of each. Sonnet takes the rows that run steps the prompt
+// spells out and make no judgment; every row that judges or writes an artifact or code
+// is Opus. Per-row reasons are in SKILL.md.
 // ---------------------------------------------------------------------------
-const ROSTER = { opus: ['low', 'medium', 'high'] }
+const EFFORTS = ['low', 'medium', 'high', 'xhigh']
+const ROSTER = { opus: EFFORTS, sonnet: EFFORTS }
 
 // The severity scale is /speckit-converge's Step 5 scale, most severe first, and the
 // four values the analyze schema carries. args.severityFloor is the highest severity
@@ -95,36 +99,42 @@ const ROSTER = { opus: ['low', 'medium', 'high'] }
 const SEVERITY_ORDER = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']
 const SEVERITY_FLOORS = ['HIGH', 'MEDIUM', 'LOW', 'NONE']
 const TIERS = {
-  preflight: { model: 'opus', effort: 'low' },
-  plan: { model: 'opus', effort: 'high' },
-  reviewPlan: { model: 'opus', effort: 'high' },
-  fixPlan: { model: 'opus', effort: 'medium' },
+  // Long step-by-step git and shell checklists; the return value is a list of facts,
+  // and the one judgment preflight meets (several candidate directories) is one it
+  // refuses. Medium, not low, so no step of a long checklist is skipped.
+  preflight: { model: 'sonnet', effort: 'medium' },
+  plan: { model: 'opus', effort: 'xhigh' },
+  reviewPlan: { model: 'opus', effort: 'xhigh' },
+  fixPlan: { model: 'opus', effort: 'high' },
   tasks: { model: 'opus', effort: 'medium' },
-  analyze: { model: 'opus', effort: 'medium' },
+  analyze: { model: 'opus', effort: 'high' },
   remediate: { model: 'opus', effort: 'medium' },
-  remediateCritical: { model: 'opus', effort: 'medium' },
-  phases: { model: 'opus', effort: 'low' },
+  remediateCritical: { model: 'opus', effort: 'high' },
+  // Parse only, but a reader at low effort can stop short on a long tasks.md.
+  phases: { model: 'sonnet', effort: 'medium' },
   implement: { model: 'opus', effort: 'medium' },
-  converge: { model: 'opus', effort: 'medium' },
+  converge: { model: 'opus', effort: 'high' },
   // Writes one task per finding a converge round graded and did not append. It authors
   // tasks from findings rather than copying a rendered document, and a paraphrased task
-  // could close on something else, so it is priced with converge and implement.
+  // could close on something else, so it is priced with implement.
   forceAppend: { model: 'opus', effort: 'medium' },
   // Runs only after a forced append reports failure: decides from git whether the
   // forced phase is wholly absent, wholly present, or neither. It may delete a partial
-  // phase and must answer "unsure" rather than guess, so it is not on the low tier.
+  // phase and must answer "unsure" rather than guess, so it is Opus, not Sonnet.
   // The parse-only `phases` row re-reads the file afterwards.
   reconcileTasks: { model: 'opus', effort: 'medium' },
   // Checks whether each spec.md deferral quotation a converge round offers is in
   // spec.md. A text search, so the cheapest tier; without it the assessment could
   // exempt work by quoting plan.md or an invented line.
-  checkDeferrals: { model: 'opus', effort: 'low' },
-  finish: { model: 'opus', effort: 'low' },
-  // Writes one file whose whole text this script hands it, commits it, pushes it.
-  // Nothing here is a judgment, so it is priced at the cheapest tier in the roster;
-  // the document is rendered in the script precisely so a tier this low cannot
+  checkDeferrals: { model: 'sonnet', effort: 'low' },
+  // Runs the wall, merges the base in, lands by fast-forward push and deletes the
+  // branch, each step spelled out; origin takes the landing only as a fast-forward.
+  finish: { model: 'sonnet', effort: 'medium' },
+  // Writes one file whose whole text this script hands it, commits it, pushes it; the
+  // same row pushes the base branch after planning. Nothing here is a judgment, so it
+  // is Sonnet; the document is rendered in the script precisely so the agent cannot
   // paraphrase a finding or drop one.
-  handoff: { model: 'opus', effort: 'low' },
+  handoff: { model: 'sonnet', effort: 'medium' },
 }
 
 const STAGES = ['preflight', 'plan', 'review-plan', 'tasks', 'analyze', 'implement', 'converge', 'finish']
@@ -778,7 +788,7 @@ const state = {
 //
 // The document is rendered here rather than described to the agent. The sandbox has
 // no filesystem, so an agent must do the write; letting it compose the report would
-// let the cheapest tier paraphrase, reorder or drop a finding. It gets finished
+// let the agent paraphrase, reorder or drop a finding. It gets finished
 // Markdown and one placeholder, the date, because the script has no Date.
 //
 // It names no journal path: the script has no handle on its own run id, and the newest
@@ -2297,8 +2307,8 @@ const readPhases = async (label, group) => {
 }
 
 // The phase an append just wrote is found by its number or not at all. The reader is a
-// parse-only agent on the cheapest tier and can stop short on a long tasks.md; falling
-// back to the last phase it returned can send implement at a phase already complete,
+// parse-only Sonnet agent and can stop short on a long tasks.md; falling back to the
+// last phase it returned can send implement at a phase already complete,
 // which comes back green while the appended tasks stay open. So: one re-read that names
 // the miss, then a person. Where the append gave no number, the last phase stands in
 // only while it holds unchecked tasks, which a phase just appended always does.
