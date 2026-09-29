@@ -19,7 +19,7 @@ Agent Skills distributed with Vercel's `skills` CLI, one `skills/<name>/SKILL.md
 | Path | What it is |
 | --- | --- |
 | `skills/build-feature/SKILL.md`, `workflow.mjs` | The unattended feature build: one Claude Code Workflow script, run `from: "implement"` by this skill. Both files are large; read by section |
-| `skills/plan-feature/` | Runs the same script `until: "analyze"` and hands the spec's open questions to the domain expert; no script of its own |
+| `skills/plan-feature/` | Runs the same script `until: "analyze"` and hands the spec's open questions to the domain expert; its `workflow.mjs` is a symlink to `build-feature`'s, which the `skills` CLI installs as a copy |
 | `skills/init-pipeline/` | Sets up a project `/new-java-backend` (in `../skills`) created for the pipeline: copies `project/` (constitution, `.claude/settings.json`, the traceability gate, `scripts/wall-checks.txt`) into it without overwriting, except that an existing `.claude/settings.json` gets `worktree.baseRef` when missing and an existing `scripts/wall-checks.txt` gets its missing lines; appends `CLAUDE.section.md` to its `CLAUDE.md`, then `specify init`; `--update` refreshes the gate in an existing project |
 | `BACKLOG.md` | Owed work |
 

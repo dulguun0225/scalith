@@ -16,9 +16,9 @@ disable-model-invocation: true
 
 2.1 and 2.2 alternate until no question is open. A `CRITICAL` or `HIGH` question is open until the spec answers it. A `MEDIUM` or `LOW` one is also closed when the technical expert or the domain expert says the build may start on its recommended answer; the domain expert can still answer it later or never.
 
-## Call build-feature's script; write no loop
+## Call the workflow script; write no loop
 
-**Call the Workflow tool with `build-feature`'s `workflow.mjs`, reached as a sibling of this skill's directory, with `until: "analyze"`, and run no `speckit-*` skill from your own context.**
+**Call the Workflow tool with this skill's `workflow.mjs`, which is `build-feature`'s script, with `until: "analyze"`, and run no `speckit-*` skill from your own context.**
 
 **Planning runs on the base branch.** Preflight checks it out when the run starts elsewhere, refuses a dirty tree, and brings it up to date from origin by fast-forward only. Every stage commits there, only in the feature directory and in what the plan step writes outside it — the agent context file's managed section, an admitted constitution amendment, a `docs/GATES.md` entry. Nothing is pulled between stages, so a spec change pushed during the run is read by the next start. Each push is preceded by `git pull --rebase origin <base>`, which moves only the run's own commits; a refused push is tried again up to 3 times, and a conflict is aborted and stops the run. The plan review records the spec it read in `<featureDir>/spec-reviewed.sha`; a later start whose base spec differs from it restarts at `review-plan`. **A feature's spec is fixed once its build branch, `build/<NNN>-<name>`, exists**: a start refuses while that branch holds commits the base lacks, and a change to what the feature does is specified as a new feature whose spec states the change.
 
@@ -26,7 +26,7 @@ First run, once `spec.md` is written:
 
 ```
 Workflow({
-  scriptPath: "${CLAUDE_SKILL_DIR}/../build-feature/workflow.mjs",
+  scriptPath: "${CLAUDE_SKILL_DIR}/workflow.mjs",
   args: { until: "analyze" }
 })
 ```
@@ -35,14 +35,14 @@ After the domain expert has answered, add `from: "review-plan"`, `wall` — the 
 
 ```
 Workflow({
-  scriptPath: "${CLAUDE_SKILL_DIR}/../build-feature/workflow.mjs",
+  scriptPath: "${CLAUDE_SKILL_DIR}/workflow.mjs",
   args: { from: "review-plan", until: "analyze",
           featureDir: "specs/004-product-gl-config",
           wall: "node backend/scripts/wall.mjs" }
 })
 ```
 
-That start brings the base branch up to date, answers included, reviews the plan already on it against the answered spec and repairs it in place; tasks and analyze run again. `from: "plan"` regenerates the plan and discards every review fix. The stages, their tiers, the review and analyze loops and their stops are `build-feature`'s and stated there. `build-feature` installed beside this skill is a precondition: this skill ships no script, because one script exists and it is that one. A workflow starts only from a script the session may read, so a user-level install under `~/.claude/skills/` needs that directory added first — `/add-dir` with the same path, or a `Read` allow rule — where a project-level install under `.claude/skills/` needs nothing. A missing sibling fails at the Workflow call, which refuses a `scriptPath` it cannot read; `npx skills add dulguun0225/scalith -g -a claude-code -y` installs both.
+That start brings the base branch up to date, answers included, reviews the plan already on it against the answered spec and repairs it in place; tasks and analyze run again. `from: "plan"` regenerates the plan and discards every review fix. The stages, their tiers, the review and analyze loops and their stops are `build-feature`'s and stated there. This skill ships `build-feature`'s script as its own `workflow.mjs`, so it runs without `build-feature` installed; the build step, `/build-feature`, still needs `build-feature`. A workflow starts only from a script the session may read, so a user-level install under `~/.claude/skills/` needs this skill's directory added first — `/add-dir` with `~/.claude/skills/plan-feature`, or a `Read` allow rule — where a project-level install under `.claude/skills/` needs nothing. `npx skills add dulguun0225/scalith -g -a claude-code -y` installs both skills.
 
 ## Every spec question goes to the domain expert, all at once
 

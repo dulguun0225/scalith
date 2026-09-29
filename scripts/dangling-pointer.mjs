@@ -8,10 +8,17 @@
 // nothing at all once the skill is installed — the skill dir is the whole world
 // its consumer has.
 //
+// A symlink in a skill dir is a pointer too. The `skills` CLI copies a skill
+// with symlinks dereferenced, so a link whose target is a regular file under
+// `skills/` installs as a copy of that file; one that dangles, or resolves to a
+// directory or to anything outside `skills/`, installs as nothing or as material
+// the repo does not ship. Canaries under scripts/fixtures/dangling-pointer/
+// prove each refusal on every run.
+//
 // Exit 1 on any failure. It fails the build; it is not advisory.
 
-import { readFileSync } from "node:fs";
-import { basename, join, normalize as normalizePath } from "node:path";
+import { lstatSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { basename, join, normalize as normalizePath, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { skillDirs, markdownFiles, fileExists, linesOutsideFences } from "./lib/md.mjs";
 
@@ -38,6 +45,52 @@ const LINK = /\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
 
 const skills = skillDirs(ROOT);
 
+/** Why each symlink under `dir` is refused, given the `skills/` root its target must stay inside. */
+function symlinkFailures(dir, skillsRoot, label) {
+  const root = realpathSync(skillsRoot) + sep;
+  const out = [];
+  const walk = (d) => {
+    for (const entry of readdirSync(d, { withFileTypes: true })) {
+      const path = join(d, entry.name);
+      if (entry.isDirectory()) walk(path);
+      if (!lstatSync(path).isSymbolicLink()) continue;
+      const at = `${label}/${relative(dir, path)}`;
+      let real;
+      try {
+        real = realpathSync(path);
+      } catch {
+        out.push(`${at} is a symlink to nothing`);
+        continue;
+      }
+      if (!real.startsWith(root)) out.push(`${at} is a symlink that resolves outside skills/`);
+      else if (!statSync(real).isFile()) out.push(`${at} is a symlink to something other than a regular file`);
+    }
+  };
+  walk(dir);
+  return out;
+}
+
+// Each canary names the fixture dir and the refusal it must produce; `ok` must produce none.
+const CANARIES = join(ROOT, "scripts", "fixtures", "dangling-pointer", "skills");
+let blind = false;
+for (const [fixture, expected] of [
+  ["ok", null],
+  ["dangling", "to nothing"],
+  ["outside", "outside skills/"],
+  ["directory", "other than a regular file"],
+]) {
+  const got = symlinkFailures(join(CANARIES, fixture), CANARIES, `canary/${fixture}`);
+  const fine = expected === null ? got.length === 0 : got.length === 1 && got[0].includes(expected);
+  if (!fine) {
+    console.log(`BLIND canary/${fixture}: expected ${expected === null ? "no refusal" : `a refusal "${expected}"`}, got ${JSON.stringify(got)}`);
+    blind = true;
+  }
+}
+if (blind) {
+  console.log("\nThe symlink check is blind: at least one canary was not refused for the reason it tests.");
+  process.exit(1);
+}
+
 // Pass one: every id this skill set defines, and which skill owns it.
 const owner = new Map();
 for (const { name, dir } of skills) {
@@ -57,6 +110,7 @@ const failures = [];
 const crossSkill = new Map();
 
 for (const { name, dir } of skills) {
+  failures.push(...symlinkFailures(dir, join(ROOT, "skills"), name));
   for (const { name: file, path } of markdownFiles(dir)) {
     const where = (line) => `${name}/${file}:${line}`;
     linesOutsideFences(readFileSync(path, "utf8")).forEach((line, i) => {
