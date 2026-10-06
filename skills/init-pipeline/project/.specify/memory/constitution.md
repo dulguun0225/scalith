@@ -51,10 +51,18 @@ exposure point, and nowhere else.
 
 ## Article VI. Features are packages
 
-A feature is one package under the base package, depending on the platform tier and never on another
-feature. It owns its migrations, its error catalog, its service, its controller and its integration test.
-It owns its tables: only it writes them, and any feature may read them through the generated jOOQ tables,
-never through the owner's classes.
+A feature is one package under the base package. It owns its migrations, its error catalog, its service, its
+controller and its integration test. It depends on the platform tier and the generated jOOQ tables, and on
+another feature only through that feature's `api` package itself, never a subpackage of it, along an edge listed
+as one `caller -> callee` line in the backend's allowed feature map, `LayeringArchTest.ALLOWED_FEATURE_DEPENDENCIES`,
+which starts empty. No chain of edges returns to its start: a cycle between features fails whatever the map says.
+A plan for a spec that needs another feature names each edge and the callee's types it calls; the edge is a plan
+decision, never a constitution amendment. The implementation puts those types in the callee's `api` package and
+adds the map line in the same commit as the call, removes the line in the commit that removes the last call, and
+never edits the boundary test.
+It owns its tables: only it writes them, and a method that writes may name no other feature's table. Any feature
+may read another's tables through the generated jOOQ tables, in a method that starts no write, or through the
+owner's `api` package along a mapped edge.
 One feature package is the worked shape at any time and `backend/CLAUDE.md` names it; copy its shape. The
 template's sample package is deleted by the first real feature and is never the shape again.
 
@@ -66,5 +74,10 @@ to bind more than one feature and names the test or gate that holds it.
 
 ## Governance
 
-Amendments are commits to this file with the reason in the message. A gate is removed only together with
-the directive it implemented being retired in the skills repo, never because it is inconvenient.
+Amendments are commits to this file with the reason in the message; the file carries no version number, and
+the commit is the record. Articles I–VI change only when the template in `backend/` changes what it enforces,
+never for one feature. Article VII is the project's own, and a rule is admitted to it only when it binds two or
+more feature packages, or a table or package the proposing feature does not own, and names the test or gate that
+holds it; a rule about one feature's own tables, columns, endpoints or error codes is a plan decision, recorded
+in that feature's plan and `docs/GATES.md`. A gate is removed only together with the directive it implemented
+being retired in the skills repo, never because it is inconvenient.
