@@ -52,21 +52,30 @@ npx skills add dulguun0225/skills -g -a claude-code -y    # the engineering-deci
 Install both repos' skills first (above). The order is fixed, and both skills
 come before spec-kit:
 
-1. In an empty project directory, invoke `/new-java-backend` (from
-   `dulguun0225/skills`). It lands `dulguun0225/java-backend-template` in
-   `backend/` at its pinned commit and makes the init commit.
-2. Invoke `/init-pipeline`. It copies the spec-kit constitution, the
+1. In a new, empty directory, invoke `/new-java-backend` (from
+   `dulguun0225/skills`). Not a clone of an empty forge repository: a `.git`
+   makes the directory non-empty and the script refuses it, since it runs
+   `git init` itself. It asks for the base package, the artifact name and the
+   Maven group, lands `dulguun0225/java-backend-template` in `backend/` at its
+   pinned commit, and makes the init commit on `dev`.
+2. Run the forge steps it prints and leaves to you: `gh repo create
+   <org>/<name> --private --source=. --push && git push -u origin main`,
+   `gh repo edit <org>/<name> --default-branch dev`, and
+   `node scripts/apply-ruleset.mjs`. The pipeline needs the `origin` remote:
+   specify and clarify push the spec, and `/plan-feature` and `/build-feature`
+   push their commits.
+3. Invoke `/init-pipeline`. It copies the spec-kit constitution, the
    traceability gate and the project rules into the project, runs
    `specify init --here`, disables spec-kit's git extension when it is installed
    and enabled (older spec-kit installs it by default, 1.0.8 only on `--extension git`;
    its hook moves `/speckit-specify` onto a new branch), and commits.
-3. Nothing for the constitution. Articles I–VI arrive from `/init-pipeline` and
+4. Nothing for the constitution. Articles I–VI arrive from `/init-pipeline` and
    restate what the backend wall enforces; they are not re-planned. Article VII
    is an optional slot that starts empty, nothing reads whether it is filled,
    and it is amended later, as a commit with its reason, from the candidates a
    feature's plan produces. `/speckit-constitution` is not a step of starting a
    project.
-4. Three loops, each over stock spec-kit commands:
+5. Three loops, each over stock spec-kit commands:
    - The domain expert, on the base branch: `/speckit-specify`, then
      `/speckit-clarify` until it finds nothing to ask.
    - The technical expert: `/plan-feature` (plan, plan review, tasks, analyze).
