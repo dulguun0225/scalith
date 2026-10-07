@@ -55,6 +55,8 @@ That start brings the base branch up to date, answers included, reviews the plan
 
 A finding whose remedy changes behaviour an earlier feature's spec specifies is still a question for this feature's spec, phrased as a change this feature makes to that feature and naming it. The earlier feature's spec is left as it is, the record of what was built.
 
+A question about how the service treats a caller's contradictory, ambiguous or invalid input is recommended as a refusal with a named error that says what is wrong and what is allowed, never a guess, a picked value or a silent correction (`enforceable-rules`, "Fail loud, never silently wrong"). The recommendation is a default, not an edit: the answer stays the domain expert's.
+
 Plan review, tasks and analyze collect them instead of stopping at the first, and each later stage works on the recommended answer. After analyze, a run holding an open question returns `status: "needs-human"` with `questions` and `clarifyCommand`, and commits and pushes `<featureDir>/QUESTIONS.md` beside `HANDOFF.md` on the base branch, next to the spec. `/build-feature` refuses while a question is open. Then:
 
 1. **Show the person the questions first, as one table** — number, question, recommended answer, what a different answer would change, severity — built from `questions`, with no paragraph before it. `QUESTIONS.md` and the top of `HANDOFF.md` hold the same table.

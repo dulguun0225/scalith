@@ -238,7 +238,7 @@ const SPEC_CHANGES_FIELD = {
     properties: {
       requirement: { type: 'string', description: 'the requirement id or spec section the question is about, with the spec text it concerns quoted' },
       question: { type: 'string', description: 'one question the domain expert can answer without technical knowledge: plain words, no file names, no plan, code or framework terms, ending with "?"' },
-      recommendedAnswer: { type: 'string', description: 'the answer you recommend, in one sentence, and why in a few words; the run works on this answer until the domain expert gives theirs' },
+      recommendedAnswer: { type: 'string', description: 'the answer you recommend, in one sentence, and why in a few words; the run works on this answer until the domain expert gives theirs. A question about how the service treats a caller\'s contradictory, ambiguous or invalid input (two values for one variable, an idempotency key reused with different content, a line break in an email subject) is answered: refuse the request with a named error that says what is wrong and what is allowed, never pick a value or correct the input (enforceable-rules, "Fail loud, never silently wrong")' },
       consequence: { type: 'string', description: 'what would have to change in the feature if the domain expert answered differently, in one short plain sentence, e.g. "the order states and the cancel endpoint change" or "one error message changes"' },
       severity: {
         type: 'string',

@@ -20,6 +20,11 @@ specified as a new feature with `/speckit-specify`, and that spec states the cha
 - A feature's `spec.md` is written here and owned here: a domain expert writes `specs/<NNN>-<name>/spec.md`
   with stock spec-kit (`/speckit-specify`, `/speckit-clarify`), build work picks up at `/speckit-plan`, and no
   later stage edits `spec.md`. Nothing is derived from a document in another repository.
+- A question about how the service treats a caller's contradictory, ambiguous or invalid input — one variable
+  given two values, an idempotency key reused with different content, a line break in an email subject — is
+  recommended as: refuse the request with a named error that says what is wrong and what is allowed, never pick
+  a value or correct the input (`enforceable-rules`, "Fail loud, never silently wrong"). The recommendation is a
+  default offered to the domain expert, not an edit: the answer and `spec.md` stay theirs.
 - `node scripts/check-traceability.mjs` is the spec↔code gate. The backend wall runs it: `scripts/wall-checks.txt`
   lists its self-test, `scripts/check-traceability.selftest.mjs`, and then the gate, and
   `node backend/scripts/wall.mjs` runs each listed script from this directory. The gate refuses a bare
