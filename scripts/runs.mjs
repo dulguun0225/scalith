@@ -20,6 +20,14 @@
 // repository, and a cleared projects directory erases them. Nothing here
 // commits a journal or a copy of one.
 //
+// A third source, the subagent transcripts, for money. The journal holds one
+// undifferentiated token number per agent; each agent's transcript, beside the
+// journal at `<sessionId>/subagents/workflows/<runId>/agent-<agentId>.jsonl`,
+// holds the usage of every API response it made, split into uncached input,
+// cache writes, cache reads and output. Those are priced at API list prices
+// (`PRICES` below). The account is a Claude subscription, so the figure is
+// "API-equivalent": what the same tokens would cost on the API, not the bill.
+//
 // A report, not a gate, and it can never become one. Every number below is a
 // property of runs that happened on one machine, in consumer repositories this
 // repo does not control, by an operator who may have intervened by hand between
@@ -42,7 +50,10 @@
 // Exits 0 on a clean read. Exits 1 when a journal could not be parsed or an
 // agent label could not be read, because then every table below it is short by
 // an unknown amount — the sibling principle from `frontmatter-tokens.mjs`, that
-// a silently miscounted number is worse than a failure.
+// a silently miscounted number is worse than a failure. A missing or unreadable
+// transcript, or a model with no price, does not change the exit: the agent is
+// left out of the cost figures, which show it as coverage, and is listed at the
+// end.
 //
 // Flags:
 //   --repo <abs path>   consumer repo to read; repeatable; defaults below
@@ -59,7 +70,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, sep } from "node:path";
+import { basename, dirname, join, sep } from "node:path";
 
 // The consumer repos that have run these skills. Named rather than discovered:
 // a scan of every project directory would read journals from unrelated work,
@@ -111,6 +122,90 @@ function journalPaths(repo) {
 
 const unreadable = [];
 const unparsedLabels = [];
+const transcriptProblems = [];
+
+// ---------------------------------------------------------------------------
+// Transcripts and prices
+// ---------------------------------------------------------------------------
+
+// USD per million tokens: [base input, 5m cache write, 1h cache write, cache
+// read, output]. Source: https://platform.claude.com/docs/en/about-claude/pricing,
+// fetched 2026-10-08. Haiku 5.5 has a second tier for a request whose total
+// input (uncached + cache writes + cache reads) exceeds 100K tokens. A model id
+// not listed here is unpriced, never priced at zero.
+const PRICES = {
+  "claude-fable-5-1": [10, 12.5, 20, 0.25, 50],
+  "claude-fable-5": [10, 12.5, 20, 1, 50],
+  "claude-opus-5-5": [4, 5, 8, 0.2, 20],
+  "claude-opus-5": [5, 6.25, 10, 0.5, 25],
+  "claude-opus-4-8": [5, 6.25, 10, 0.5, 25],
+  "claude-sonnet-5-5": [2, 2.5, 4, 0.1, 10],
+  "claude-sonnet-5": [2, 2.5, 4, 0.2, 10],
+  "claude-haiku-5-5": [0.1, 0.125, 0.2, 0.01, 0.5],
+};
+const PRICES_OVER_100K = { "claude-haiku-5-5": [0.5, 0.625, 1, 0.05, 2.5] };
+// `<synthetic>` marks a response the client made up, with zero usage.
+const UNBILLED_MODELS = new Set(["<synthetic>"]);
+
+const transcriptPath = (journalPath, agentId) =>
+  join(dirname(dirname(journalPath)), "subagents", "workflows", basename(journalPath, ".json"), `agent-${agentId}.jsonl`);
+
+/**
+ * One agent's usage from its transcript, or `{ problem }`. Streaming writes
+ * several lines per response under one `message.id` + `requestId`, the first
+ * with `output_tokens: 1`; the line with the largest `output_tokens` is kept.
+ * A line that does not parse makes the whole transcript unreadable rather than
+ * being skipped: a skipped line could be a response, and a cost short by an
+ * unknown amount is the silently miscounted number this script refuses.
+ */
+function readTranscript(path) {
+  let text;
+  try {
+    text = readFileSync(path, "utf8");
+  } catch (e) {
+    return { problem: e.code === "ENOENT" ? "missing" : `unreadable: ${e.message.slice(0, 80)}` };
+  }
+  const byRequest = new Map();
+  const lines = text.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    if (!lines[i].trim()) continue;
+    let o;
+    try {
+      o = JSON.parse(lines[i]);
+    } catch {
+      return { problem: `line ${i + 1} does not parse` };
+    }
+    const m = o?.message;
+    if (o?.type !== "assistant" || !m?.usage || UNBILLED_MODELS.has(m.model)) continue;
+    const key = `${m.id}|${o.requestId ?? ""}`;
+    const prev = byRequest.get(key);
+    if (!prev || (m.usage.output_tokens ?? 0) > (prev.usage.output_tokens ?? 0)) byRequest.set(key, { model: m.model, usage: m.usage });
+  }
+  const usage = { input: 0, cacheWrite5m: 0, cacheWrite1h: 0, cacheRead: 0, output: 0 };
+  const usd = { input: 0, cacheWrite: 0, cacheRead: 0, output: 0 };
+  const models = new Set();
+  const unpriced = new Set();
+  for (const { model, usage: u } of byRequest.values()) {
+    models.add(model);
+    // Without the `cache_creation` breakdown every write is taken as 5m.
+    const w1h = u.cache_creation?.ephemeral_1h_input_tokens ?? 0;
+    const w5m = u.cache_creation ? (u.cache_creation.ephemeral_5m_input_tokens ?? 0) : (u.cache_creation_input_tokens ?? 0);
+    const r = { input: u.input_tokens ?? 0, cacheWrite5m: w5m, cacheWrite1h: w1h, cacheRead: u.cache_read_input_tokens ?? 0, output: u.output_tokens ?? 0 };
+    for (const k in usage) usage[k] += r[k];
+    const over = r.input + r.cacheWrite5m + r.cacheWrite1h + r.cacheRead > 100_000;
+    const p = (over && PRICES_OVER_100K[model]) || PRICES[model];
+    if (!p) {
+      unpriced.add(model);
+      continue;
+    }
+    usd.input += (r.input * p[0]) / 1e6;
+    usd.cacheWrite += (r.cacheWrite5m * p[1] + r.cacheWrite1h * p[2]) / 1e6;
+    usd.cacheRead += (r.cacheRead * p[3]) / 1e6;
+    usd.output += (r.output * p[4]) / 1e6;
+  }
+  if (unpriced.size) return { problem: `no price for ${[...unpriced].join(", ")}`, requests: byRequest.size, models: [...models], usage };
+  return { requests: byRequest.size, models: [...models], usage, usd: { ...usd, total: usd.input + usd.cacheWrite + usd.cacheRead + usd.output } };
+}
 
 // ---------------------------------------------------------------------------
 // Agent labels
@@ -206,16 +301,19 @@ function readRun(path, repo) {
 
   const parsed = [];
   for (const a of agents) {
+    const t = a.agentId ? readTranscript(transcriptPath(path, a.agentId)) : { problem: "no agentId in the journal" };
+    if (t.problem) transcriptProblems.push(`${j.runId ?? "?"} ${a.agentId ?? "?"} ${String(a.label).slice(0, 50)}: ${t.problem}`);
     const p = parseLabel(a.label);
     if (!p) {
       unparsedLabels.push(`${j.runId ?? "?"}: ${String(a.label).slice(0, 70)}`);
-      parsed.push({ stage: "(unparsed)", normalStage: "(unparsed)", model: a.model ?? "?", effort: "?", retry: 0, annotations: [], agent: a });
+      parsed.push({ stage: "(unparsed)", normalStage: "(unparsed)", model: a.model ?? "?", effort: "?", retry: 0, annotations: [], agent: a, transcript: t });
       continue;
     }
-    parsed.push({ ...p, agent: a });
+    parsed.push({ ...p, agent: a, transcript: t });
   }
 
   const withTokens = parsed.filter((p) => typeof p.agent.tokens === "number");
+  const priced = parsed.filter((p) => p.transcript.usd);
   const stageCount = (re) => parsed.filter((p) => re.test(p.normalStage)).length;
   const logs = (j.logs ?? []).map(String);
 
@@ -262,6 +360,8 @@ function readRun(path, repo) {
     agentCount: parsed.length,
     tokenAgents: withTokens.length,
     tokens: withTokens.reduce((n, p) => n + p.agent.tokens, 0),
+    pricedAgents: priced.length,
+    usd: priced.reduce((n, p) => n + p.transcript.usd.total, 0),
     totalTokens: j.totalTokens ?? 0,
     durationMs: j.durationMs ?? 0,
     toolCalls: j.totalToolCalls ?? 0,
@@ -518,6 +618,9 @@ const stops = runs.filter((r) => r.exit === "needs-human").map(readStop);
 const fmtM = (n) => `${(n / 1e6).toFixed(2)}M`;
 const mins = (ms) => `${Math.round(ms / 60000)}m`;
 const coverage = (tok, a, b) => `>=${tok.toLocaleString("en-US")} over ${a}/${b} agents`;
+const usdFmt = (n) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const usdCoverage = (usd, a, b) => `>=${usdFmt(usd)} over ${a}/${b} agents`;
+const pct = (x, of) => `${of ? ((100 * x) / of).toFixed(1) : "0.0"}%`;
 
 // Every exit sets process.exitCode and lets the process end once stdout has
 // drained. process.exit() does not wait for a pipe: `--json | <reader>` was cut
@@ -526,7 +629,7 @@ const readFailed = unreadable.length || unparsedLabels.length ? 1 : 0;
 if (asJson) {
   console.log(
     JSON.stringify(
-      { generated: new Date().toISOString(), repos, since: since ?? null, until: until ?? null, stops, runs: runs.map(({ agents, ...r }) => ({ ...r, agents: agents.map((p) => ({ stage: p.normalStage, model: p.model, effort: p.effort, retry: p.retry, annotations: p.annotations, tokens: p.agent.tokens ?? null, durationMs: p.agent.durationMs ?? null })) })) },
+      { generated: new Date().toISOString(), repos, since: since ?? null, until: until ?? null, stops, runs: runs.map(({ agents, ...r }) => ({ ...r, agents: agents.map((p) => ({ stage: p.normalStage, model: p.model, effort: p.effort, retry: p.retry, annotations: p.annotations, tokens: p.agent.tokens ?? null, durationMs: p.agent.durationMs ?? null, agentId: p.agent.agentId ?? null, transcriptProblem: p.transcript.problem ?? null, apiModels: p.transcript.models ?? null, requests: p.transcript.requests ?? null, usage: p.transcript.usage ?? null, apiEquivalentUsd: p.transcript.usd ?? null })) })) },
       null,
       2,
     ),
@@ -569,7 +672,8 @@ function textReport() {
     console.log(
       `    from=${r.from} until=${r.until} rounds:${rounds} floor=${r.convergeFloor} handoff=${r.handoff}` +
         ` | fc=${m.forced} wr=${m.wallRepair} rc=${m.reconcile} ao=${m.assessOnly} sr=${m.stallRetry}` +
-        ` | agents=${r.agentCount} ${coverage(r.tokens, r.tokenAgents, r.agentCount)} ${mins(r.durationMs)} tools=${r.toolCalls}`,
+        ` | agents=${r.agentCount} ${coverage(r.tokens, r.tokenAgents, r.agentCount)} ${mins(r.durationMs)} tools=${r.toolCalls}` +
+        ` | API-eq ${usdCoverage(r.usd, r.pricedAgents, r.agentCount)}`,
     );
     if (r.stagesRun) console.log(`    stagesRun: ${r.stagesRun.join(" -> ")}`);
     for (const l of [...r.wallRed, ...r.roundCap, ...r.stalls]) console.log(`    ! ${l.slice(0, 150)}`);
@@ -587,6 +691,29 @@ function textReport() {
     `Corpus: ${runs.length} runs, ${runs[0].date}..${runs.at(-1).date}, ` +
       `${coverage(tot((r) => r.tokens), tot((r) => r.tokenAgents), tot((r) => r.agentCount))}, ` +
       `${(tot((r) => r.durationMs) / 3600000).toFixed(1)}h, ${tot((r) => r.agentCount)} agents.`,
+  );
+  // Cost split over every priced agent. Cache-read share of input is over
+  // tokens, not dollars: uncached + cache writes + cache reads.
+  const split = { input: 0, cacheWrite: 0, cacheRead: 0, output: 0, total: 0 };
+  const inTok = { uncached: 0, write: 0, read: 0 };
+  for (const r of runs)
+    for (const p of r.agents) {
+      const t = p.transcript;
+      if (!t.usd) continue;
+      for (const k in split) split[k] += t.usd[k];
+      inTok.uncached += t.usage.input;
+      inTok.write += t.usage.cacheWrite5m + t.usage.cacheWrite1h;
+      inTok.read += t.usage.cacheRead;
+    }
+  console.log(
+    `API-equivalent cost: ${usdCoverage(split.total, tot((r) => r.pricedAgents), tot((r) => r.agentCount))}; ` +
+      `cache read ${pct(split.cacheRead, split.total)}, cache write ${pct(split.cacheWrite, split.total)}, ` +
+      `output ${pct(split.output, split.total)}, uncached input ${pct(split.input, split.total)}; ` +
+      `cache reads are ${pct(inTok.read, inTok.uncached + inTok.write + inTok.read)} of input tokens.`,
+  );
+  console.log(
+    `  API list prices applied to the transcripts' token split; the account is a\n` +
+      `  subscription, so this is what the same tokens would cost on the API, not the bill.`,
   );
   console.log(`Exits: ${Object.entries(exits).sort().map(([k, v]) => `${k}=${v}`).join(", ")}`);
   console.log(
@@ -609,9 +736,12 @@ function textReport() {
   const byFeature = new Map();
   for (const r of runs) {
     const key = `${r.repo}/${r.feature}`;
-    const e = byFeature.get(key) ?? { runs: 0, tokens: 0, implement: 0, exits: [] };
+    const e = byFeature.get(key) ?? { runs: 0, tokens: 0, usd: 0, priced: 0, agents: 0, implement: 0, exits: [] };
     e.runs += 1;
     e.tokens += r.tokens;
+    e.usd += r.usd;
+    e.priced += r.pricedAgents;
+    e.agents += r.agentCount;
     e.implement += r.agents.filter((p) => /^implement/.test(p.normalStage)).length;
     e.exits.push(r.exit === "needs-human" ? r.stage : r.exit);
     byFeature.set(key, e);
@@ -619,7 +749,7 @@ function textReport() {
   console.log(`\nPer feature:`);
   for (const [k, e] of [...byFeature].sort()) {
     console.log(
-      `  ${k.padEnd(52)} runs=${String(e.runs).padStart(2)} tok=${fmtM(e.tokens)} implement-agents=${String(e.implement).padStart(2)}` +
+      `  ${k.padEnd(52)} runs=${String(e.runs).padStart(2)} tok=${fmtM(e.tokens)} API-eq=${usdFmt(e.usd)}${e.priced < e.agents ? ` (${e.priced}/${e.agents} agents)` : ""} implement-agents=${String(e.implement).padStart(2)}` +
         `${e.implement === 0 ? "  <- never reached implement" : ""}`,
     );
   }
@@ -654,6 +784,37 @@ function textReport() {
         `${`${r.tokens.toLocaleString("en-US")} (${r.withTok}/${r.n})`.padStart(18)}  ` +
         `${String(r.withTok ? Math.round(r.tokens / r.withTok) : 0).padStart(9)}  ` +
         `${String(r.withMs ? Math.round(r.ms / r.withMs / 1000) : 0).padStart(7)}  ${r.retries}`,
+    );
+  }
+
+  // Same grouping, priced. `req/agent` is API responses per agent after
+  // deduplication; read, write and out are shares of the row's cost.
+  console.log(`\n\n=== Stage x tier — API-equivalent cost ===\n`);
+  const costCells = new Map();
+  for (const r of runs) {
+    for (const p of r.agents) {
+      const key = `${p.normalStage}|${p.model} ${p.effort}`;
+      const c = costCells.get(key) ?? { n: 0, priced: 0, usd: 0, read: 0, write: 0, out: 0, requests: 0 };
+      c.n += 1;
+      const t = p.transcript;
+      if (t.usd) {
+        c.priced += 1;
+        c.usd += t.usd.total;
+        c.read += t.usd.cacheRead;
+        c.write += t.usd.cacheWrite;
+        c.out += t.usd.output;
+        c.requests += t.requests;
+      }
+      costCells.set(key, c);
+    }
+  }
+  const costRows = [...costCells].map(([k, c]) => ({ stage: k.split("|")[0], tier: k.split("|")[1], ...c })).sort((a, b) => b.usd - a.usd);
+  const costTotal = costRows.reduce((n, r) => n + r.usd, 0);
+  console.log(`${"stage".padEnd(w)}  ${"tier".padEnd(14)}  ${"priced/n".padStart(9)}  ${"API-eq".padStart(10)}  ${"share".padStart(6)}  ${"req/agent".padStart(9)}  ${"read".padStart(6)}  ${"write".padStart(6)}  ${"out".padStart(6)}`);
+  for (const r of costRows) {
+    console.log(
+      `${r.stage.padEnd(w)}  ${r.tier.padEnd(14)}  ${`${r.priced}/${r.n}`.padStart(9)}  ${usdFmt(r.usd).padStart(10)}  ${pct(r.usd, costTotal).padStart(6)}  ` +
+        `${String(r.priced ? Math.round(r.requests / r.priced) : 0).padStart(9)}  ${pct(r.read, r.usd).padStart(6)}  ${pct(r.write, r.usd).padStart(6)}  ${pct(r.out, r.usd).padStart(6)}`,
     );
   }
 
@@ -795,10 +956,22 @@ function textReport() {
     console.log();
   }
 
+  if (transcriptProblems.length) {
+    console.log(
+      `Agents left out of the API-equivalent cost — transcript missing or unreadable,\n` +
+        `or a model with no price. Every dollar figure above is short by these:`,
+    );
+    for (const u of transcriptProblems) console.log(`  ${u}`);
+    console.log();
+  }
+
   console.log(`What this report does not decide:
-  - anything about money. The journal carries one undifferentiated token number
-    per agent with no input/output/cache split, so no price could be applied
-    even with a table. Cost here is tokens and wall-clock, never dollars
+  - the bill. Dollars here are API-equivalent: the transcripts' token split at
+    API list prices from one dated table. The account is a subscription, whose
+    cost does not depend on these tokens, and a price change after that date
+    is not reflected. The main session that started a run is not counted
+  - which skill or directive cost what. A transcript, like a journal, is
+    priced per agent; nothing attributes an agent's tokens to a loaded skill
   - which skills an agent loaded. No journal names a skill at all, so whether
     \`money\`, \`primary-keys\` or any other directive reached an implement agent
     is not observable from here. The consumer repo's own backend/docs/GATES.md is
