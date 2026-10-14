@@ -146,9 +146,13 @@ const STAGES = ['preflight', 'plan', 'review-plan', 'tasks', 'analyze', 'impleme
 // specified and not yet planned, takes no arguments at all.
 // ---------------------------------------------------------------------------
 const a = args && typeof args === 'object' ? args : {}
+// A feature directory in one spelling: no leading `./`, no trailing `/`. The script
+// compares the directory preflight returns with the one the run names, and the build
+// branch name is its last path segment, which a trailing `/` would leave empty.
+const featureDirOf = d => String(d || '').trim().replace(/^(\.\/)+/, '').replace(/\/+$/, '')
 
 const cfg = {
-  featureDir: a.featureDir || null, // discovered by preflight when absent
+  featureDir: featureDirOf(a.featureDir) || null, // discovered by preflight when absent; held to this value when given
   branch: a.branch || null, // discovered by preflight when absent
   baseBranch: a.baseBranch || null, // discovered before preflight when absent; see resolveBase
   wall: a.wall || null, // definition-of-done command; preflight finds it in CLAUDE.md when null
@@ -642,6 +646,22 @@ const S = {
     },
   },
 }
+// Preflight when the run names its feature directory: the agent echoes it in every
+// return, never resolves one, and reports the spec check in a field of its own, so an
+// empty or other `featureDir` is always the agent off its prompt, never a finding. The
+// schema without `featureDir` given stays S.preflight, unchanged.
+S.preflightNamed = (() => {
+  const { candidates, ...properties } = S.preflight.properties
+  return {
+    ...S.preflight,
+    required: [...S.preflight.required, 'specMissing'],
+    properties: {
+      ...properties,
+      featureDir: { type: 'string', description: 'the feature directory the prompt names, exactly as the prompt writes it, in every return, including one where you stopped before reaching it' },
+      specMissing: { type: 'boolean', description: 'true when the feature directory the prompt names does not exist or holds no spec.md that is present and not empty; false when it holds one, or when you stopped before testing it' },
+    },
+  }
+})()
 
 // ---------------------------------------------------------------------------
 // Prompt fragments
@@ -1642,8 +1662,11 @@ const codeList = names => names.map(n => `\`${n}\``).join(' and ')
   const gateFile = f => (buildStart ? `\`git cat-file -e ${base}:${f}\`` : `\`test -f ${f}\``)
   const listed = re => (buildStart ? `\`git show ${base}:scripts/wall-checks.txt | grep -qxE '${re}'\`` : `\`grep -qxE '${re}' scripts/wall-checks.txt\``)
   const gateCheck = `${buildStart ? `On \`${base}\`, ` : ''}\`scripts/check-traceability.mjs\` and \`scripts/check-traceability.selftest.mjs\` must exist at the project root (${gateFile('scripts/check-traceability.mjs')} and ${gateFile('scripts/check-traceability.selftest.mjs')} succeed), and \`scripts/wall-checks.txt\` must list each on a line of its own (${listed('(\\./)?scripts/check-traceability\\.mjs[[:space:]]*')} and ${listed('(\\./)?scripts/check-traceability\\.selftest\\.mjs[[:space:]]*')} succeed), so the definition of done runs the traceability gate and its self-test; a template pull can drop it silently. Any missing one is a problem whose fix is \`/init-pipeline\`, run on \`${base}\`.`
-  const p = await run('preflight', full ? 'preflight' : 'preflight (discovery)', [
+  // `earlier`, on a second ask only, says what the first ask returned in place of the
+  // feature directory this run names.
+  const preflightPrompt = earlier => [
     UNATTENDED,
+    earlier,
     buildStart
       ? `Establish which spec-kit feature this unattended build is for, bring the base branch up to date from origin, and report the facts the run needs before it makes or resumes the feature's build branch. Check nothing out and merge nothing into the branch you are on: the run makes the build branch itself once every check has passed. Everything you may write is named in the steps below — the base branch moved forward and one machine-local state file — and nothing else. Never write to spec.md or to anything else in the feature directory: the spec is its author's.`
       : `Establish which spec-kit feature this unattended run plans, put the repository on the base branch and bring it up to date from origin${full ? ', and check that the repository is ready to plan and build' : ''}. Planning runs on the base branch. Everything you may write is named in the steps below — one checkout of the base branch, the base branch moved forward, one machine-local state file — and nothing else. Never write to spec.md or to anything else in the feature directory: the spec is its author's.`,
@@ -1656,18 +1679,29 @@ const codeList = names => names.map(n => `\`${n}\``).join(' and ')
     buildStart
       ? `4. Bring \`${base}\` up to date from origin, by fast-forward only. ${cfg.push ? `\`git fetch --prune origin\`; then, when you are on \`${base}\`, \`git merge --ff-only origin/${base}\`, and otherwise \`git fetch origin ${base}:${base}\`, which moves the local branch only by fast-forward. Return \`updated\` as "none" when it was already up to date and "fast-forward" when it moved. A step that fails — no remote, a local \`${base}\` that has diverged — is \`updated\` "failed" and a problem, with git's message quoted, and you stop. ${aheadCheck}` : noRemote}`
       : `4. When you are not on \`${base}\`, \`git checkout ${base}\`; a checkout that fails is a problem, with git's message quoted, and you stop. Note \`git rev-parse HEAD\`. Then bring it up to date from origin, by fast-forward only. ${cfg.push ? `\`git fetch --prune origin && git merge --ff-only origin/${base}\` — what \`git pull --ff-only\` does. Return \`updated\` as "none" when it was already up to date and "fast-forward" when it moved. A step that fails — no remote, a local \`${base}\` that has diverged — is \`updated\` "failed" and a problem, with git's message quoted, and you stop. ${aheadCheck}` : noRemote}`,
-    '5. Resolve the feature directory and return it as `featureDir`, in this order, taking the first that answers:',
-    cfg.featureDir
-      ? `   (a) this run names it: \`${cfg.featureDir}\`. If the branch you started on names a different feature by the rule in (b), that disagreement is a problem — say which two — and you stop rather than choose.`
-      : '   (a) — this run names no feature directory, so start at (b).',
-    `   (b) the branch you started on, when it is a build branch: ${namesFeature} becomes \`specs/<NNN>-<name>\`. A branch named \`<NNN>-<name>\` alone, such as spec-kit makes for /speckit-specify, names nothing here.`,
-    buildStart
-      ? `   (c) the one directory under \`specs/\` whose \`tasks.md\` on \`${base}\` holds an open task — a feature planned on the base branch and not yet built: \`git grep -l -E '^[[:space:]]*[-*] \\[ \\] T[0-9]+' ${base} -- 'specs/*/tasks.md'\`. Exactly one is the answer. Zero or more than one is a problem: return every directory you considered in \`candidates\` with what made it a candidate or not, leave \`featureDir\` empty, and stop. Never pick one of several, and never take the newest or the highest-numbered — a person passes \`args.featureDir\` instead.`
-      : `   (c) the one directory under \`specs/\` that holds a non-empty \`spec.md\` and no \`plan.md\` — the feature specified and not yet planned. List them (\`ls -d specs/*/\`) and test each. Exactly one is the answer. Zero or more than one is a problem: return every directory you considered in \`candidates\` with what made it a candidate or not, leave \`featureDir\` empty, and stop. Never pick one of several, and never take the newest or the highest-numbered — a person passes \`args.featureDir\` instead; a planning start after \`plan\` always does.`,
-    '   (d) only when nothing above resolved: the `feature_directory` value in `.specify/feature.json`. It is machine-local, git-ignored state written by whichever machine last ran /speckit-specify, so it is the last resort and never overrides (a), (b) or (c).',
-    buildStart
-      ? `   The resolved directory must hold a \`spec.md\` on \`${base}\` that is present and not empty (\`git cat-file -s ${base}:<featureDir>/spec.md\` prints a number above 0). A missing or empty one is a problem, and \`featureDir\` comes back empty — this run builds a spec somebody has already written.`
-      : '   The resolved directory must exist and hold a `spec.md` that is present and not empty (`wc -c`). A missing directory, a missing spec.md or an empty one is a problem, and `featureDir` comes back empty — this run plans a spec somebody has already written, and it writes no spec of its own.',
+    // A run that names its feature directory gets no resolution steps at all: given a
+    // list that ends in a search of specs/, the agent has run the search in place of the
+    // named directory and returned no directory.
+    ...(cfg.featureDir
+      ? [
+        `5. The feature directory is \`${cfg.featureDir}\`, which this run names. Use it as given and look for no other: list nothing under \`specs/\` to find a feature, and do not read \`.specify/feature.json\` for one. Return it as \`featureDir\`, exactly as written here, in every return, including one where you stopped at an earlier step or stop at a problem in this one.`,
+        `   When the branch you started on is a build branch, ${namesFeature}, it names \`specs/<NNN>-<name>\`; a branch named \`<NNN>-<name>\` alone, such as spec-kit makes for /speckit-specify, names nothing here. A build branch that names a feature other than \`${cfg.featureDir}\` is a problem — say which two — and you stop rather than choose.`,
+        buildStart
+          ? `   \`${cfg.featureDir}\` must hold a \`spec.md\` on \`${base}\` that is present and not empty (\`git cat-file -s ${base}:${cfg.featureDir}/spec.md\` prints a number above 0). When it does not, return \`specMissing\` true, add the problem, and stop: this run builds a spec somebody has already written. Otherwise return \`specMissing\` false.`
+          : `   \`${cfg.featureDir}\` must exist and hold a \`spec.md\` that is present and not empty (\`wc -c\`). When it does not, return \`specMissing\` true, add the problem, and stop: this run plans a spec somebody has already written, and it writes no spec of its own. Otherwise return \`specMissing\` false.`,
+      ]
+      : [
+        '5. Resolve the feature directory and return it as `featureDir`, in this order, taking the first that answers:',
+        '   (a) — this run names no feature directory, so start at (b).',
+        `   (b) the branch you started on, when it is a build branch: ${namesFeature} becomes \`specs/<NNN>-<name>\`. A branch named \`<NNN>-<name>\` alone, such as spec-kit makes for /speckit-specify, names nothing here.`,
+        buildStart
+          ? `   (c) the one directory under \`specs/\` whose \`tasks.md\` on \`${base}\` holds an open task — a feature planned on the base branch and not yet built: \`git grep -l -E '^[[:space:]]*[-*] \\[ \\] T[0-9]+' ${base} -- 'specs/*/tasks.md'\`. Exactly one is the answer. Zero or more than one is a problem: return every directory you considered in \`candidates\` with what made it a candidate or not, leave \`featureDir\` empty, and stop. Never pick one of several, and never take the newest or the highest-numbered — a person passes \`args.featureDir\` instead.`
+          : `   (c) the one directory under \`specs/\` that holds a non-empty \`spec.md\` and no \`plan.md\` — the feature specified and not yet planned. List them (\`ls -d specs/*/\`) and test each. Exactly one is the answer. Zero or more than one is a problem: return every directory you considered in \`candidates\` with what made it a candidate or not, leave \`featureDir\` empty, and stop. Never pick one of several, and never take the newest or the highest-numbered — a person passes \`args.featureDir\` instead; a planning start after \`plan\` always does.`,
+        '   (d) only when nothing above resolved: the `feature_directory` value in `.specify/feature.json`. It is machine-local, git-ignored state written by whichever machine last ran /speckit-specify, so it is the last resort and never overrides (a), (b) or (c).',
+        buildStart
+          ? `   The resolved directory must hold a \`spec.md\` on \`${base}\` that is present and not empty (\`git cat-file -s ${base}:<featureDir>/spec.md\` prints a number above 0). A missing or empty one is a problem, and \`featureDir\` comes back empty — this run builds a spec somebody has already written.`
+          : '   The resolved directory must exist and hold a `spec.md` that is present and not empty (`wc -c`). A missing directory, a missing spec.md or an empty one is a problem, and `featureDir` comes back empty — this run plans a spec somebody has already written, and it writes no spec of its own.',
+      ]),
     inputsToCheck.length
       ? `   The artifacts this run reads before any stage of it writes them are ${inputsToCheck.map(f => `\`<featureDir>/${f}\``).join(', ')}. ${buildStart ? `Test each on \`${base}\`: \`git cat-file -s ${base}:<featureDir>/<file>\` succeeding and printing a number above 0.` : 'Test each in the working tree, which is now the base branch: `test -s <featureDir>/<file>`.'} Return every one that fails, as its repo-relative path, in \`missingInputs\`. A missing one is not a problem: do not add it to \`problems\`, do not create it; the run reports it itself.`
       : '',
@@ -1695,7 +1729,33 @@ const codeList = names => names.map(n => `\`${n}\``).join(' and ')
         : `11. Find the project's definition-of-done command: read CLAUDE.md at the repo root (and the backend's CLAUDE.md if there is one) for the command it names as the definition of done or as "exactly what CI runs" — for example \`node backend/scripts/wall.mjs\`. Return it as \`wall\`. If no such command is named, return an empty string and add a problem saying so.`)
       : `9. Return \`wall\` as \`${cfg.wall || ''}\` and \`clarifications\` empty: the checks this run skipped are not yours to redo.`,
     'Return ok=true only when there are no problems.',
-  ].filter(Boolean).join('\n'), S.preflight, 'Preflight')
+  ].filter(Boolean).join('\n')
+  const preflightLabel = full ? 'preflight' : 'preflight (discovery)'
+  let p = await run('preflight', preflightLabel, preflightPrompt(''), cfg.featureDir ? S.preflightNamed : S.preflight, 'Preflight')
+  // A run that names its feature directory never takes one from the agent. The prompt
+  // tells the agent to return the named directory in every return, so a return that is
+  // empty or names another is the agent off its prompt — not a finding about the
+  // repository — and every other fact in it may be about the wrong directory. The
+  // agent is asked once more, the way a failed forced append is retried once: every
+  // step is safe to repeat (checking out the base, a fast-forward that has nothing
+  // left to move, rewriting .specify/feature.json to the named directory). One fact is
+  // not: a fast-forward the first ask made is not seen by the second, so the second
+  // returns `specChanged` false. A stop and a restart by hand loses it the same way,
+  // and a start after review-plan still compares the spec with the blob in
+  // spec-reviewed.sha, which the second ask reads afresh. A second
+  // return off the prompt stops the run, which then has no report it can trust.
+  const offPrompt = r => cfg.featureDir && featureDirOf(r.featureDir) !== cfg.featureDir
+  const offPromptText = r => `${featureDirOf(r.featureDir) ? `\`featureDir\` as \`${r.featureDir}\`` : '`featureDir` empty'}${Array.isArray(r.candidates) && r.candidates.length ? ` with ${r.candidates.length} candidate director${r.candidates.length === 1 ? 'y' : 'ies'}` : ''}`
+  if (offPrompt(p)) {
+    const first = p
+    log(`preflight: the agent returned ${offPromptText(first)}, not the feature directory this run names, ${cfg.featureDir}; asking once more`)
+    p = await run('preflight', `${preflightLabel} (asked again)`, preflightPrompt(`An earlier agent given these steps for this run returned ${offPromptText(first)}, not \`${cfg.featureDir}\`: it looked for a feature instead of using the one this run names. Take every step again from step 1 — each is safe to repeat — and in step 5 use \`${cfg.featureDir}\` as given.`), S.preflightNamed, 'Preflight')
+    if (offPrompt(p)) {
+      return await needsHuman('preflight',
+        `preflight's agent did not follow its prompt, twice: this run names the feature directory \`${cfg.featureDir}\`, the prompt gives it as the feature and tells the agent to return it, and the agent returned ${offPromptText(first)} the first time and ${offPromptText(p)} the second. Nothing else it reported can be taken to be about \`${cfg.featureDir}\`, so the run stopped there: no stage was started, nothing was committed${buildStart ? ', no build branch was made' : ''}, and no other feature was chosen. Preflight may have checked out \`${state.baseBranch}\`, brought it up to date from origin, and pointed the machine-local \`.specify/feature.json\` at a directory; the next start sets each again. Start the run again with the same arguments; the problems the agent reported are below`,
+        { featureDir: cfg.featureDir, returned: [first.featureDir || '', p.featureDir || ''], problems: p.problems || [] })
+    }
+  }
   state.branch = p.branch || state.branch
   // The command preflight read out of CLAUDE.md. args.wall, where given, wins: every
   // argument overrides what preflight would find.
@@ -1712,8 +1772,17 @@ const codeList = names => names.map(n => `\`${n}\``).join(' and ')
   state.checkedTasks = runs('tasks') ? taskIds(p.checkedTasks) : []
   state.openTasks = runs('tasks') ? taskIds(p.openTasks).filter(id => !state.checkedTasks.includes(id)) : []
   state.featureJsonTracked = p.featureJson === 'tracked'
-  state.featureDir = p.featureDir || null
-  if (!p.featureDir && Array.isArray(p.candidates) && p.candidates.length) {
+  state.featureDir = cfg.featureDir || p.featureDir || null
+  // Before the missing-inputs exit, which would read a directory that is not there as a
+  // plan to regenerate.
+  if (cfg.featureDir && p.specMissing) {
+    return await needsHuman('preflight',
+      `\`${cfg.featureDir}\` is not a feature directory this run can work on: it does not exist, or it holds no readable, non-empty spec.md${buildStart ? ` on \`${state.baseBranch}\`` : ''}. A feature is specified before this run starts — /speckit-specify and /speckit-clarify are the author's, not this script's`,
+      p.problems)
+  }
+  // This exit and the no-directory exit below are reached only by a run that names no
+  // feature directory: a run that names one has held the agent's return to it above.
+  if (!cfg.featureDir && !p.featureDir && Array.isArray(p.candidates) && p.candidates.length) {
     return await needsHuman('preflight',
       buildStart
         ? `the feature could not be resolved: this build start names no \`featureDir\`, the branch it started on names no feature, and exactly one directory under specs/ should hold a \`tasks.md\` on \`${state.baseBranch}\` with an open task — a feature planned on the base branch and not yet built — and ${p.candidates.length} were considered. The run will not pick one of several, because building the wrong feature is not something a later stage would notice. Pass \`featureDir\``
@@ -1745,10 +1814,9 @@ const codeList = names => names.map(n => `\`${n}\``).join(' and ')
       { missingInputs: paths, from: cfg.from, restartFrom: restart, problems: p.problems || [] }, restart)
   }
   if (!p.ok) return await needsHuman('preflight', full ? 'the repository is not ready' : 'the repository is not ready, or does not match what this restart was given', p.problems)
-  if (!p.featureDir) {
-    return await needsHuman('preflight', cfg.featureDir
-      ? `\`${cfg.featureDir}\` is not a feature directory this run can work on: it does not exist, or it holds no readable, non-empty spec.md. A feature is specified before this run starts — /speckit-specify and /speckit-clarify are the author's, not this script's`
-      : `no feature directory could be resolved: the branch \`${p.branch || '(none reported)'}\` does not name one, no single directory under specs/ answered for it, and .specify/feature.json — machine-local state, and the last thing this run trusts — named nothing usable either. Pass \`featureDir\``,
+  if (!cfg.featureDir && !p.featureDir) {
+    return await needsHuman('preflight',
+      `no feature directory could be resolved: the branch \`${p.branch || '(none reported)'}\` does not name one, no single directory under specs/ answered for it, and .specify/feature.json — machine-local state, and the last thing this run trusts — named nothing usable either. Pass \`featureDir\``,
       p.problems)
   }
   // Where the run stands is the script's own check on the agent's report, not a question
