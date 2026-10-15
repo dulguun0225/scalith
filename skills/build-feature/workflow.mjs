@@ -65,8 +65,8 @@
 // return whose left-open questions changed rewrites QUESTIONS.md alone.
 
 export const meta = {
-  name: 'build-feature',
-  description: 'Build one spec-kit feature from a finished spec with no human gate: plan, review, tasks, analyze, implement per phase, converge until clean, push',
+  name: 'plan-or-build-feature',
+  description: 'Plan or build one spec-kit feature from a finished spec: plan, review, tasks and analyze; a build run then implements, converges and lands it on the base branch',
   whenToUse: 'When a feature directory already holds the spec its domain expert wrote, and the project is a spec-kit project whose definition of done is one command',
   phases: [
     { title: 'Preflight', detail: 'feature directory, branch, repo state, definition of done' },
