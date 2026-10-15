@@ -9,7 +9,9 @@
     "check": "skills add . --list",
     "check:pointers": "node scripts/dangling-pointer.mjs",
     "check:descriptions": "node scripts/description-budget.mjs",
-    "gates": "npm run check:pointers && npm run check:descriptions",
+    "check:plan-feature": "node scripts/plan-feature-workflow.mjs --check",
+    "gates": "npm run check:pointers && npm run check:descriptions && npm run check:plan-feature",
+    "gen:plan-feature": "node scripts/plan-feature-workflow.mjs",
     "runs": "node scripts/runs.mjs",
     "try": "skills use ./ --agent claude-code --skill"
   },

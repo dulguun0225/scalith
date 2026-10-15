@@ -334,6 +334,9 @@ function readRun(path, repo) {
     date: String(j.timestamp ?? "").slice(0, 10),
     timestamp: String(j.timestamp ?? ""),
     workflowName: j.workflowName ?? "?",
+    // plan-feature's script is named plan-feature, build-feature's build-feature.
+    // Older journals name build-feature or plan-or-build-feature for either skill.
+    skill: j.workflowName === "plan-feature" || j.workflowName === "build-feature" ? j.workflowName : "?",
     harnessStatus: j.status ?? "?",
     feature: res.featureDir ?? j.args?.featureDir ?? "(unresolved)",
     from: j.args?.from ?? "-",
@@ -670,7 +673,7 @@ function textReport() {
         ` ${r.exit === "needs-human" ? `needs-human@${r.stage}` : r.exit === "done" ? `done (${r.convergeEnded})` : `harness:${r.harnessStatus}`}`,
     );
     console.log(
-      `    from=${r.from} until=${r.until} rounds:${rounds} floor=${r.convergeFloor} handoff=${r.handoff}` +
+      `    skill=${r.skill} from=${r.from} until=${r.until} rounds:${rounds} floor=${r.convergeFloor} handoff=${r.handoff}` +
         ` | fc=${m.forced} wr=${m.wallRepair} rc=${m.reconcile} ao=${m.assessOnly} sr=${m.stallRetry}` +
         ` | agents=${r.agentCount} ${coverage(r.tokens, r.tokenAgents, r.agentCount)} ${mins(r.durationMs)} tools=${r.toolCalls}` +
         ` | API-eq ${usdCoverage(r.usd, r.pricedAgents, r.agentCount)}`,
@@ -983,10 +986,13 @@ function textReport() {
   - near-duplicate findings. Grouping is an exact match after normalising, and
     \`build-feature\` records that exact match alone never fired on re-typed
     wording — which is why its own loop asks the assessment for \`repeatOf\`
-  - which skill invoked the run. Every journal names build-feature's script;
-    plan-feature passes \`until: "analyze"\` and build-feature
-    \`from: "implement"\`, and an older run with \`from: "converge"\` may have
-    been started by the removed converge-feature
+  - which skill invoked an older run. A journal names plan-feature or
+    build-feature after the skill whose script ran; an older one names
+    build-feature or plan-or-build-feature whichever skill started it, so
+    skill=build-feature there may be a plan-feature run. Of those, plan-feature
+    passes \`until: "analyze"\` and build-feature \`from: "implement"\`, and a
+    run with \`from: "converge"\` may have been started by the removed
+    converge-feature
   - wall attempts inside an implement agent, or a second implement pass over
     unchecked ids. Neither has a label or a log line; only the phase-level wall
     outcome is recorded

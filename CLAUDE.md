@@ -19,14 +19,15 @@ Agent Skills distributed with Vercel's `skills` CLI, one `skills/<name>/SKILL.md
 | Path | What it is |
 | --- | --- |
 | `skills/build-feature/SKILL.md`, `reference.md`, `workflow.mjs` | The unattended feature build: one Claude Code Workflow script, run `from: "implement"` by this skill. `SKILL.md` holds what the invoking session needs, `reference.md` how each stage works and where it stops. All three are large; read by section |
-| `skills/plan-feature/` | Runs the same script `until: "analyze"` and hands the spec's open questions to the domain expert; its `workflow.mjs` is a symlink to `build-feature`'s, which the `skills` CLI installs as a copy |
+| `skills/plan-feature/` | Runs the same script `until: "analyze"` and hands the spec's open questions to the domain expert; its `workflow.mjs` is generated from `build-feature`'s with only `meta` changed, so the Workflow tool shows `plan-feature` as the running script's name |
 | `skills/init-pipeline/` | Sets up a project `/new-java-backend` (in `../skills`) created for the pipeline: copies `project/` (constitution, `.claude/settings.json`, the traceability gate, `scripts/wall-checks.txt`) into it without overwriting, except that an existing `.claude/settings.json` gets `worktree.baseRef` when missing and an existing `scripts/wall-checks.txt` gets its missing lines; appends `CLAUDE.section.md` to its `CLAUDE.md`, then `specify init`; `--update` refreshes the gate in an existing project |
 | `BACKLOG.md` | Owed work |
 
 ```bash
 mise trust && mise install && npm ci   # once per machine; npm ci before any script
 npm run check          # skills the CLI discovers; run after any frontmatter edit
-npm run gates          # dangling pointers, description budget
+npm run gates          # dangling pointers, description budget, plan-feature's workflow.mjs up to date
+npm run gen:plan-feature   # regenerate skills/plan-feature/workflow.mjs from build-feature's
 node skills/init-pipeline/project/scripts/check-traceability.selftest.mjs   # self-test of the gate init-pipeline installs; CI runs check, gates and this
 npm run runs -- --repo <abs path> --since <date>   # report from Workflow run journals in service repos
 npm run try -- <name>  # run one skill from the working tree
@@ -39,6 +40,7 @@ Flags go after `--`; without it npm swallows them. A skill missing from `npm run
 - `SKILL.md` holds rules, not history: no dates, decision records, rejected alternatives, run ids or status lines.
 - No relative link leaves its own skill directory; `check:pointers` fails the build on one.
 - Never state a skill count in prose; run `npm run check`.
+- Never edit `skills/plan-feature/workflow.mjs`; after any edit to `skills/build-feature/workflow.mjs`, run `npm run gen:plan-feature` and commit both. `npm run gates` fails while the copy is stale.
 
 ## How the skills work
 

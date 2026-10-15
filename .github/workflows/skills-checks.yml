@@ -50,7 +50,7 @@ jobs:
             echo "a SKILL.md was skipped by discovery - it is invisible to every consumer"; exit 1
           fi
 
-      - name: Gates — dangling pointers and description budget
+      - name: Gates — dangling pointers, description budget, plan-feature's generated workflow.mjs
         run: npm run gates
 
       - name: Traceability gate self-test — init-pipeline's gate catches every failure class it claims
